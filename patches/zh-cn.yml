@@ -1,0 +1,404 @@
+# warp_rs 补丁表 —— 由 scripts/import_warp_txt.py 自动生成
+# 目标客户端：2025-06-04 Ragexe（PE32，未加壳）
+#
+# 字段说明：
+#   id       唯一标识
+#   desc     说明（启动器界面上显示）
+#   find     搜索特征串（hex，?? 为通配）
+#   replace  替换字节（hex）
+#   section  限定在哪个段里搜
+#   expect   期望命中次数（不符即失败）
+#   nth      打第几次命中（1 开始）
+#   all      是否把所有命中都打上
+#   terminate 替换后是否补一个 00 字符串结束符
+#   dates    按 PE 编译时间（YYYYMMDD）过滤
+#   disabled 是否停用（跳过但不算失败）
+version: 1
+patches:
+  - id: skill_timer_hour
+    desc: "%d 小时（%d hour）"
+    desc_en: "%d hour"
+    find: "25 64 20 BD C3 B0 A3 20"
+    replace: "25 64 20 D0 A1 CA B1"
+    section: .rdata
+    expect: 4
+    all: true
+    terminate: false
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+    # 同一字符串在 exe 里出现 4 次，全部替换
+  - id: skill_timer_minutes
+    desc: "%d 分（%d min）"
+    desc_en: "%d min"
+    find: "25 64 20 BA D0 20"
+    replace: "25 64 20 B7 D6"
+    section: .rdata
+    expect: 4
+    all: true
+    terminate: false
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+    # 同一字符串在 exe 里出现 4 次，全部替换
+  - id: skill_timer_seconds
+    desc: "%d 秒（%d sec）"
+    desc_en: "%d sec"
+    find: "25 64 20 C3 CA"
+    replace: "25 64 20 C3 EB"
+    section: .rdata
+    expect: 4
+    all: true
+    terminate: false
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+    # 同一字符串在 exe 里出现 4 次，全部替换
+  - id: deletion_time_part_1
+    desc: "删除:%d/%d-%d:%d:%d（Delete: %d/%d - %d:%d:%d）"
+    desc_en: "Delete: %d/%d - %d:%d:%d"
+    find: "25 64 BF F9 20 25 64 C0 CF 20 25 64 BD C3 20 25 64 BA D0 20 25 64 C3 CA"
+    replace: "C9 BE B3 FD 3A 25 64 2F 25 64 2D 25 64 3A 25 64 3A 25 64"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: false
+    disabled: true
+    note: "写入区域和补丁 deletion_time_part_2 重叠（同一段字符串的两种翻译），只能二选一；本条保留原韩文"
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: deletion_time_part_2
+    desc: "%d/%d/%d - %d:%d:%d（%d/%d/%d - %d:%d:%d）"
+    desc_en: "%d/%d/%d - %d:%d:%d"
+    find: "25 64 B3 E2 20 25 64 BF F9 20 25 64 C0 CF 20 25 64 BD C3 20 25 64 BA D0 20 25 64 C3 CA 20"
+    replace: "25 64 2F 25 64 2F 25 64 20 2D 20 25 64 3A 25 64 3A 25 64"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    priority: 1
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: message_box
+    desc: "消息（Message）"
+    desc_en: "Message"
+    find: "B8 DE BD C3 C1 F6 00"
+    replace: "CF FB CF A2"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: find
+    desc: "查找（Find）"
+    desc_en: "Find"
+    find: "B0 CB BB F6"
+    replace: "B2 E9 D5 D2"
+    section: .rdata
+    expect: 3
+    nth: 3
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: back_to_nav
+    desc: "返回（Back to Navigation）"
+    desc_en: "Back to Navigation"
+    find: "B1 E6 20 C1 A4 BA B8"
+    replace: "B7 B5 BB D8"
+    section: .rdata
+    expect: 2
+    nth: 1
+    terminate: false
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: more
+    desc: "更多（More）"
+    desc_en: "More"
+    find: "C0 FC C0 E5"
+    replace: "B8 FC B6 E0"
+    section: .rdata
+    expect: 3
+    nth: 3
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: big
+    desc: "大型（Big）"
+    desc_en: "Big"
+    find: "B4 EB C7 FC"
+    replace: "B4 F3 D0 CD"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: false
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: medium
+    desc: "中（Med）"
+    desc_en: "Med"
+    find: "C1 DF C7 FC"
+    replace: "D6 D0"
+    disabled: true
+    note: "唯一命中在文件名 effect\\중간상세화.tga 里，改了会破坏客户端读图"
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: small
+    desc: "小（Smal）"
+    desc_en: "Smal"
+    find: "BC D2 C7 FC"
+    replace: "D0 A1"
+    disabled: true
+    note: "唯一命中在文件名 effect\\작은상세화.tga 里，改了会破坏客户端读图"
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: you_part_1
+    desc: "你（You）"
+    desc_en: "You"
+    find: "A1 DA 00"
+    replace: "C4 E3"
+    section: .text
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: monster
+    desc: "怪物（Monstr）"
+    desc_en: "Monstr"
+    find: "B8 F3 BD BA C5 CD"
+    replace: "B9 D6 CE EF"
+    section: .rdata
+    expect: 141
+    nth: 59
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: minutes
+    desc: "分（M）"
+    desc_en: "M"
+    find: "BA D0"
+    replace: "B7 D6"
+    section: .rdata
+    expect: 16
+    nth: 1
+    terminate: false
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: seconds
+    desc: "秒（S）"
+    desc_en: "S"
+    find: "C3 CA"
+    replace: "C3 EB"
+    section: .rdata
+    expect: 26
+    nth: 4
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: rank
+    desc: "排名（Rank）"
+    desc_en: "Rank"
+    find: "BC F8 C0 A7"
+    replace: "C5 C5 C3 FB"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: game_settings
+    desc: "设置（Settings）"
+    desc_en: "Settings"
+    find: "B0 D4 C0 D3 20 BC B3 C1 A4"
+    replace: "C9 E8 D6 C3"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: move_part_2
+    desc: "移动（Move）"
+    desc_en: "Move"
+    find: "C0 CC B5 BF"
+    replace: "D2 C6 B6 AF"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: map
+    desc: "图（MP）"
+    desc_en: "MP"
+    find: "B8 CA"
+    replace: "CD BC"
+    section: .rdata
+    expect: 12
+    nth: 6
+    terminate: false
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: total_in_cash_shop
+    desc: "总计 : %d 点（Total : %d Cash）"
+    desc_en: "Total : %d Cash"
+    find: "54 6F 74 61 6C 20 3A 20 25 64 20 C4 B3 BD C3"
+    replace: "D7 DC BC C6 20 3A 20 25 64 20 B5 E3"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: message_box_2015_part_1
+    desc: "消息（Message）"
+    desc_en: "Message"
+    find: "B8 DE BC BC C1 F6 00"
+    replace: "CF FB CF A2"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: pet_evolution_item_amount_in_non_langtype_0
+    desc: "%d个（%dea）"
+    desc_en: "%dea"
+    find: "25 64 B0 B3 00"
+    replace: "25 64 B8 F6 20 25 64 65 61"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: tip_box_part_2
+    desc: "关闭（Exit）"
+    desc_en: "Exit"
+    find: "B4 DD B1 E2"
+    replace: "B9 D8 B1 D5"
+    section: .rdata
+    expect: 2
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: equipment_dismount_cart
+    desc: "收起推车（Cart Off）"
+    desc_en: "Cart Off"
+    find: "C4 AB C6 AE 20 C7 D8 C1 A6"
+    replace: "CA D5 C6 F0 CD C6 B3 B5"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: no_color
+    desc: "无颜色（No Color）"
+    desc_en: "No Color"
+    find: "BF B0 BB F6 C1 A6 B0 C5"
+    replace: "CE DE D1 D5 C9 AB"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: equipment
+    desc: "装备中（Equipment）"
+    desc_en: "Equipment"
+    find: "C0 E5 BA F1 B4 C9 B7 C2 C4 A1"
+    replace: "D7 B0 B1 B8 D6 D0"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: game_usage_time_notice_part_1
+    desc: "%d 时间已过。（%d time has passed now.）"
+    desc_en: "%d time has passed now."
+    find: "25 64 20 BD C3 B0 A3 C0 CC 20 B0 E6 B0 FA C7 DF BD C0 B4 CF B4 D9 2E"
+    replace: "25 64 20 CA B1 BC E4 D2 D1 B9 FD A1 A3"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: game_usage_time_notice_part_2
+    desc: "过度游戏可能影响正常生活。（Excessive gaming can disrupt your normal daily life routine.）"
+    desc_en: "Excessive gaming can disrupt your normal daily life routine."
+    find: "B0 FA B5 B5 C7 D1 20 B0 D4 C0 D3 C0 CC BF EB C0 BA 20 C1 A4 BB F3 C0 FB C0 CE 20 C0 CF BB F3 BB FD C8 B0 BF A1 20 C1 F6 C0 E5 C0 BB 20 C1 D9 20 BC F6 20 C0 D6 BD C0 B4 CF B4 D9 2E"
+    replace: "B9 FD B6 C8 D3 CE CF B7 BF C9 C4 DC D3 B0 CF EC D5 FD B3 A3 C9 FA BB EE A1 A3"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: macro_report_part_1
+    desc: "举报（Report）"
+    desc_en: "Report"
+    find: "C0 AF C0 FA 20 BD C5 B0 ED"
+    replace: "BE D9 B1 A8 20 52 65 70 6F 72 74"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: macro_report_part_2
+    desc: "请输入举报内容。（Please enter details.）"
+    desc_en: "Please enter details."
+    find: "BD C5 B0 ED 20 B3 BB BF EB C0 BB 20 C0 D4 B7 C2 C7 CF BC BC BF E4 2E"
+    replace: "C7 EB CA E4 C8 EB BE D9 B1 A8 C4 DA C8 DD A1 A3"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: macro_report_part_3
+    desc: "举报非法程序（Report Illegal Programs）"
+    desc_en: "Report Illegal Programs"
+    find: "BA D2 B9 FD 20 C7 C1 B7 CE B1 D7 B7 A5 20 C0 C7 BD C9 20 BD C5 B0 ED"
+    replace: "BE D9 B1 A8 B7 C7 B7 A8 B3 CC D0 F2"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: macro_report_part_4
+    desc: "BUG 与漏洞（Bugs and Exploits）"
+    desc_en: "Bugs and Exploits"
+    find: "B9 F6 B1 D7 20 B9 D7 20 BD C3 BD BA C5 DB 20 BE C7 BF EB"
+    replace: "42 55 47 20 D3 EB C2 A9 B6 B4"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: macro_report_part_5
+    desc: "滥用将受到处罚。（You can get punished if you abuse it.）"
+    desc_en: "You can get punished if you abuse it."
+    find: "B1 E2 B4 C9 20 BE C7 BF EB 20 BD C3 20 C1 A6 C0 E7 B8 A6 20 B9 DE C0 BB 20 BC F6 20 C0 D6 BD C0 B4 CF B4 D9 2E"
+    replace: "C0 C4 D3 C3 BD AB CA DC B5 BD B4 A6 B7 A3 A1 A3"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+  - id: rune_tablet_rune_list
+    desc: "%s 的符文（Rune of %s）"
+    desc_en: "Rune of %s"
+    find: "25 73 C0 C7 20 B7 E9 20 C1 B6 B0 A2"
+    replace: "25 73 20 B5 C4 B7 FB CE C4"
+    section: .rdata
+    expect: 1
+    nth: 1
+    terminate: true
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }

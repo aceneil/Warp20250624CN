@@ -1,0 +1,151 @@
+# warp_rs 补丁表 —— WARP 的 Custom*Lub 六条（指令级改写）
+#
+# 这六条**不是** find/replace：它们改的是 x86 指令。
+#
+#   找 PUSH imm32（imm32 = 原路径字符串的 VA）
+#     → 把新路径字符串写进 .text 段尾的空洞（文件里本来就有的 0 洞，不改文件长度）
+#     → 把 PUSH 的 imm32 改成新字符串的 VA
+#
+# 指令本身一个字节都没动，栈平衡 / 寄存器 / 分支全都保持原样，
+# 变的只是那个立即数指向哪里。
+#
+# 定位靠两条特征：
+#   * path_old —— 原路径字符串（.rdata 里的 C 字符串，大小写不敏感，* 是通配）
+#   * 引用它的 `push <字符串地址>`（opcode 68）
+#
+# 找不到就报「找不到特征 —— 本版本不适用」，绝不猜偏移。
+#
+# 新路径用 ask 参数给，默认值写在下面；可以用
+#   --set custom-mapinfo-lub=xxx
+# 按补丁 id 覆盖（也可以 --set <参数名>=xxx）。
+#
+# 目标客户端：2025-06-04 Ragexe（PE32，未加壳，编译时间 20250529，FullVer 14.29）
+meta:
+  encoding: gbk
+version: 1
+patches:
+  - id: custom-achieve-lub
+    desc: "自定义成就列表路径（Custom AchievementsList.lub path）"
+    desc_en: "Custom AchievementsList.lub path"
+    mode: custom
+    handler: custom-lub
+    section: .rdata
+    path_old: "system\\Achievement_list.lub"
+    ask:
+      key: achieve_lub_path
+      label: "成就列表（AchievementsList.lub）的新路径"
+      default: "SystemCN\\AchievementsList.lub"
+      kind: path
+      min: 1
+      max: 64
+    expect: 1
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      WARP 的 CustomAchieveLub。本客户端里的原路径字符串是
+      system\Achievement_list.lub（.rdata 0x0BC784C），
+      引用它的 push 在 .text 0x0021F934。
+
+  - id: custom-mapinfo-lub
+    desc: "自定义地图信息表路径（Custom MapInfo.lub path）"
+    desc_en: "Custom MapInfo.lub path"
+    mode: custom
+    handler: custom-lub
+    section: .rdata
+    path_old: "system\\mapInfo_true.lub"
+    ask:
+      key: mapinfo_lub_path
+      label: "地图信息表（MapInfo.lub）的新路径"
+      default: "SystemCN\\MapInfo.lub"
+      kind: path
+      min: 1
+      max: 64
+    expect: 1
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      WARP 的 CustomMapInfoLub。本客户端里的原路径字符串是
+      system\mapInfo_true.lub（.rdata 0x0BEA02C），
+      引用它的 push 在 .text 0x0028E24A。
+
+  - id: custom-ongoingquest-lub
+    desc: "自定义进行中任务列表路径（Custom OngoingQuestInfoList path）"
+    desc_en: "Custom OngoingQuestInfoList path"
+    mode: custom
+    handler: custom-lub
+    section: .rdata
+    # * 是通配：同时命中 _Sakray 和 _True 两个版本
+    path_old: "system\\OngoingQuestInfoList*"
+    ask:
+      key: ongoingquest_lub_path
+      label: "进行中任务列表（OngoingQuestInfoList）的新路径"
+      default: "SystemCN\\OngoingQuests"
+      kind: path
+      min: 1
+      max: 64
+    expect: 2
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      WARP 的 CustomOngQuestInfoLub。本客户端里有两个变体：
+      system\OngoingQuestInfoList_Sakray（.rdata 0x0BE534C，push 在 .text 0x00237D60）
+      和 system\OngoingQuestInfoList_True（.rdata 0x0BE5398，push 在 .text 0x00237D75）。
+      两条 push 在同一个函数里按开关二选一，两条都改指到新路径。
+
+  - id: custom-recommendedquest-lub
+    desc: "自定义推荐任务列表路径（Custom RecommendedQuestInfoList path）"
+    desc_en: "Custom RecommendedQuestInfoList path"
+    mode: custom
+    handler: custom-lub
+    section: .rdata
+    path_old: "system\\RecommendedQuestInfoList*"
+    ask:
+      key: recommendedquest_lub_path
+      label: "推荐任务列表（RecommendedQuestInfoList）的新路径"
+      default: "SystemCN\\RecommendedQuests_basic"
+      kind: path
+      min: 1
+      max: 64
+    expect: 2
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      WARP 的 CustomRcmdQuestInfoLub。本客户端里有两个变体：
+      system\RecommendedQuestInfoList_Sakray（.rdata 0x0BE5370，push 在 .text 0x00237D6E）
+      和 system\RecommendedQuestInfoList_True（.rdata 0x0BE53BC，push 在 .text 0x00237D83）。
+
+  - id: custom-tipbox-lub
+    desc: "自定义提示框表路径（Custom Tipbox.lub path）"
+    desc_en: "Custom Tipbox.lub path"
+    mode: custom
+    handler: custom-lub
+    section: .rdata
+    path_old: "System\\tipbox.lub"
+    ask:
+      key: tipbox_lub_path
+      label: "提示框表（Tipbox.lub）的新路径"
+      default: "SystemCN\\Tipbox.lub"
+      kind: path
+      min: 1
+      max: 64
+    expect: 1
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      WARP 的 CustomTipboxLub。本客户端里的原路径字符串是
+      System\tipbox.lub（.rdata 0x0BF8B1C），引用它的 push 在 .text 0x003722F6。
+
+  - id: custom-towninfo-lub
+    desc: "自定义城镇信息表路径（Custom Towninfo.lub path）"
+    desc_en: "Custom Towninfo.lub path"
+    mode: custom
+    handler: custom-lub
+    section: .rdata
+    path_old: "System\\Towninfo.lub"
+    ask:
+      key: towninfo_lub_path
+      label: "城镇信息表（Towninfo.lub）的新路径"
+      default: "SystemCN\\Towninfo.lub"
+      kind: path
+      min: 1
+      max: 64
+    expect: 1
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      WARP 的 CustomTownInfoLub。本客户端里的原路径字符串是
+      System\Towninfo.lub（.rdata 0x0C2D4FC），引用它的 push 在 .text 0x00669B3B。

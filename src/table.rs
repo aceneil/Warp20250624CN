@@ -195,6 +195,14 @@ pub struct PatchSpec {
     /// 替换字节比 find 短时，把 find 剩下的字节清零（原地覆写不留残渣）。
     #[serde(default)]
     pub zero_fill: Option<bool>,
+    /// 原路径特征（`custom-lub` 处理器用）：在段里找匹配这个模式的 C 字符串。
+    ///
+    /// * `*` 是通配（匹配任意长度）。
+    /// * **大小写不敏感**。
+    ///
+    /// 例：`system\\OngoingQuestInfoList*` 能同时命中 `..._Sakray` 和 `..._True`。
+    #[serde(default)]
+    pub path_old: Option<String>,
 }
 
 impl PatchSpec {

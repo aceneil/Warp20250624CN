@@ -168,13 +168,16 @@ fn 不给参数_又没默认值_必须报错() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+// M3b 起：标题放不下 11 字节的原地预算时，改成「搬进 .text 段尾的空洞」
+// （和 Custom*Lub 六条同一套机制）。所以这里不再是「报错」，
+// 而是「搬过去，而且一个字符都不能少」。
 #[test]
-fn 超长标题_必须报错_不能截断() {
+fn 超长标题_搬到空洞_不能截断() {
     let Some(exe) = test_exe() else { return };
     let dir = temp_dir("toolong");
     let yml = ask_table(&dir, Some("Ragnarok"), "");
     let out = dir.join("out.exe");
-    let long = "长".repeat(40); // GBK 80 字节，预算只有 11 字节
+    let long = "长".repeat(40); // GBK 80 字节，原地预算只有 11 字节
 
     let (code, text) = run(&[
         "apply",
@@ -187,10 +190,95 @@ fn 超长标题_必须报错_不能截断() {
         "--set",
         &format!("title={long}"),
     ]);
-    assert_eq!(code, 1, "太长应该报错：\n{text}");
-    assert!(text.contains("太长"), "报错要说太长：\n{text}");
-    assert!(text.contains("80 字节"), "报错要说实际字节数：\n{text}");
-    assert!(text.contains("11 字节"), "报错要说预算：\n{text}");
+    assert_eq!(code, 0, "长标题应该搬到空洞里：\n{text}");
+    assert!(text.contains("搬进空洞"), "报告要说清楚是「搬」不是「原地写」：\n{text}");
+
+    let data = std::fs::read(&out).unwrap();
+    // 原来的 11 字节预算区一个字节都没动（还是 "Ragnarok"）
+    assert_eq!(&data[TITLE_OFFSET..TITLE_OFFSET + 9], b"Ragnarok\0");
+
+    // 80 字节的标题完整地躺在文件里（没有被截断），后面紧跟结束符
+    let mut needle = encoding_rs::GBK.encode(&long).0.to_vec();
+    needle.push(0);
+    let at = data
+        .windows(needle.len())
+        .position(|w| w == needle.as_slice())
+        .expect("文件里找不到完整的标题");
+    assert_eq!(&data[at..at + needle.len()], needle.as_slice());
+
+    // 引用标题的两条指令都改指到新字符串了：
+    //   0x00333363: B8 <imm32>                    mov eax, 0x00FF2604
+    //   0x00A59DD0: C7 05 80 D8 1E 01 <imm32>    mov [0x011ED880], 0x00FF2604
+    // 这个客户端里每个段的 raw_ptr == RVA，所以 文件偏移 + 镜像基址 = VA
+    let va = 0x00400000u32 + at as u32;
+    for (off, len) in [(0x00333364usize, 4usize), (0x00659DD6usize, 4usize)] {
+        let imm = u32::from_le_bytes(data[off..off + len].try_into().unwrap());
+        assert_eq!(imm, va, "0x{off:X} 的立即数应该指向新标题");
+    }
+
+    // verify 要认得出来（会解出 imm32 指向的字符串来比对）
+    let (code, text_v) = run(&[
+        "verify",
+        "--exe",
+        out.to_str().unwrap(),
+        "--patches",
+        yml.to_str().unwrap(),
+        "--set",
+        &format!("title={long}"),
+    ]);
+    assert_eq!(code, 0, "verify 应该通过：\n{text_v}");
+
+    // 再打一遍 → 幂等，文件不变
+    let out2 = dir.join("out2.exe");
+    let (code, text2) = run(&[
+        "apply",
+        "--exe",
+        out.to_str().unwrap(),
+        "--patches",
+        yml.to_str().unwrap(),
+        "--out",
+        out2.to_str().unwrap(),
+        "--set",
+        &format!("title={long}"),
+    ]);
+    assert_eq!(code, 0, "第二遍应该成功：\n{text2}");
+    assert_eq!(
+        std::fs::read(&out).unwrap(),
+        std::fs::read(&out2).unwrap(),
+        "第二遍不该改文件（不幂等）"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// 连 .text 段尾的空洞都放不下 → 必须明确报错，不能截断
+#[test]
+fn 标题大到连空洞都放不下_必须报错() {
+    let Some(exe) = test_exe() else { return };
+    let dir = temp_dir("waytoolong");
+    // max 放到 5000，让标题能长到把空洞撑爆
+    let mut yml = ask_table(&dir, Some("Ragnarok"), "");
+    let text = std::fs::read_to_string(&yml).unwrap().replace("max: 60", "max: 5000");
+    std::fs::write(&yml, text).unwrap();
+    let out = dir.join("out.exe");
+    let long = "长".repeat(3000); // GBK 6000 字节
+
+    let (code, text_out) = run(&[
+        "apply",
+        "--exe",
+        exe.to_str().unwrap(),
+        "--patches",
+        yml.to_str().unwrap(),
+        "--out",
+        out.to_str().unwrap(),
+        "--set",
+        &format!("title={long}"),
+    ]);
+    assert_eq!(code, 1, "放不下应该报错：\n{text_out}");
+    assert!(
+        text_out.contains("空洞") || text_out.contains("太长"),
+        "报错要说清楚放不下：\n{text_out}"
+    );
     assert!(!out.exists(), "不该落盘");
 
     let _ = std::fs::remove_dir_all(&dir);

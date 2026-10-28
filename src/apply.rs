@@ -64,6 +64,9 @@ pub struct Location {
     pub new: String,
     /// 这个落点的状态。
     pub status: String,
+    /// 补充说明（指令上下文、imm32 旧值 → 新值……）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 /// 报告里的一条补丁。
@@ -202,6 +205,8 @@ struct Resolved {
     param_bytes: Option<(String, usize)>,
     /// 这条补丁用到的每个参数的字节数。
     param_bytes_all: Vec<(String, usize)>,
+    /// 所有 ask 参数的值（key → 明文），自定义处理器用。
+    param_values: ParamValues,
 }
 
 /// 一条补丁的落点。
@@ -211,6 +216,8 @@ struct Target {
     /// 落点上原来的字节（写之前抓的）。
     old: Vec<u8>,
     new: Vec<u8>,
+    /// 补充说明（报告里显示）。
+    note: Option<String>,
 }
 
 /// 应用补丁表。
@@ -283,6 +290,10 @@ pub fn apply(
         handler: Option<String>,
         /// 特征串在这个客户端里找不到（版本不符？）。
         not_applicable: bool,
+        /// 这条补丁实际用的写入编码。
+        enc: Encoding,
+        /// 这条补丁的 ask 参数值。
+        vals: ParamValues,
     }
 
     let mut plans: Vec<Plan> = Vec::with_capacity(table.patches.len());
@@ -295,6 +306,8 @@ pub fn apply(
             already_at: None,
             handler: None,
             not_applicable: false,
+            enc: table_enc,
+            vals: ParamValues::new(),
         };
 
         let r = match res {
@@ -306,6 +319,8 @@ pub fn apply(
                 continue;
             }
         };
+        plan.enc = r.encoding;
+        plan.vals = r.param_values.clone();
 
         // 禁用
         if r.spec.disabled {
@@ -325,6 +340,16 @@ pub fn apply(
                 "编译时间 {} 不在日期区间内，跳过",
                 engine.pe.build_date_str()
             ));
+            plans.push(plan);
+            continue;
+        }
+
+        // Rust 侧登记的「升级版」实现：
+        // 补丁表里的既有条目不能改 YAML，但可以在 Rust 侧换更强的实现
+        // （目前只有 window_title：放不下就搬到空洞）。
+        if let Some(handler) = patches::upgrade_handler(&r.spec.id) {
+            plan.handler = Some(handler.to_string());
+            plan.reason = Some(format!("自定义补丁 {handler}（Rust 侧升级实现）：在写入阶段执行"));
             plans.push(plan);
             continue;
         }
@@ -359,6 +384,7 @@ pub fn apply(
                     va: engine.va_of_offset(off),
                     old: engine.data[off..(off + bytes.len()).min(engine.data.len())].to_vec(),
                     new: bytes,
+                    note: None,
                 });
                 plan.status = Status::Already;
                 plan.already_at = Some(off);
@@ -392,6 +418,7 @@ pub fn apply(
                     va: engine.va_of_offset(off),
                     old: engine.data[off..(off + bytes.len()).min(engine.data.len())].to_vec(),
                     new: bytes,
+                    note: None,
                 });
                 plan.status = Status::Already;
                 plan.already_at = Some(off);
@@ -433,6 +460,7 @@ pub fn apply(
                     va: engine.va_of_offset(off),
                     old: engine.data[off..(off + bytes.len()).min(engine.data.len())].to_vec(),
                     new: bytes,
+                    note: None,
                 });
                 plan.status = Status::Already;
                 plan.already_at = Some(off);
@@ -529,11 +557,11 @@ pub fn apply(
         if opts.dry_run && backup.is_none() {
             backup = Some((engine.data.clone(), engine.pe.clone()));
         }
-        let (outcome, writes, marker) = {
-            let mut ctx = Ctx::new(&mut engine);
+        let (outcome, writes, marker, summary) = {
+            let mut ctx = Ctx::new(&mut engine, &plans[i].vals, plans[i].enc, &spec.id);
             let outcome = patches::dispatch(&handler, &mut ctx, spec);
             let writes = std::mem::take(&mut ctx.writes);
-            (outcome, writes, ctx.marker)
+            (outcome, writes, ctx.marker, ctx.summary)
         };
         match outcome {
             Ok(Outcome::Applied) => {
@@ -545,23 +573,46 @@ pub fn apply(
                         va: engine.va_of_offset(w.offset),
                         old: w.old,
                         new: w.new,
+                        note: w.note,
                     })
                     .collect();
                 plans[i].status = Status::Applied;
-                plans[i].reason = Some(format!(
-                    "自定义补丁 {handler}：写入 {} 处",
-                    plans[i].targets.len()
-                ));
+                plans[i].reason = Some(match summary {
+                    Some(s) => format!("自定义补丁 {handler}：写入 {} 处；{s}", plans[i].targets.len()),
+                    None => format!("自定义补丁 {handler}：写入 {} 处", plans[i].targets.len()),
+                });
             }
             Ok(Outcome::Already) => {
                 plans[i].hits = writes.len();
+                plans[i].targets = writes
+                    .into_iter()
+                    .map(|w| Target {
+                        offset: w.offset,
+                        va: engine.va_of_offset(w.offset),
+                        old: w.old,
+                        new: w.new,
+                        note: w.note,
+                    })
+                    .collect();
                 plans[i].status = Status::Already;
-                plans[i].reason = Some("已经是目标状态（幂等）".into());
+                plans[i].reason = Some(match summary {
+                    Some(s) => format!("已经是目标状态（幂等）；{s}"),
+                    None => "已经是目标状态（幂等）".into(),
+                });
                 plans[i].already_at = marker;
             }
             Ok(Outcome::Fail(why)) => {
                 plans[i].status = Status::Fail;
                 plans[i].reason = Some(why);
+                // 「找不到特征 —— 本版本不适用」算「不适用」，不是「补丁写坏了」
+                if plans[i]
+                    .reason
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("找不到特征")
+                {
+                    plans[i].not_applicable = true;
+                }
             }
             Ok(Outcome::Skipped(why)) => {
                 plans[i].status = Status::Skipped;
@@ -601,6 +652,7 @@ pub fn apply(
                     old,
                     new: hex::format_bytes(&t.new),
                     status: Status::Applied.name().to_string(),
+                    note: t.note.clone(),
                 });
             }
             if let Some(t) = plan.targets.first() {
@@ -613,33 +665,48 @@ pub fn apply(
             }
             n_applied += 1;
         } else if plan.status == Status::Already {
-            let off = plan.already_at.unwrap_or(0);
-            let len = plan
-                .targets
-                .first()
-                .map(|t| t.new.len())
-                .unwrap_or(1);
-            let old = hex::format_bytes(&engine.data[off..(off + len).min(engine.data.len())]);
-            locations.push(Location {
-                offset: off,
-                offset_hex: format!("0x{off:08X}"),
-                va: engine.va_of_offset(off),
-                va_hex: engine.va_of_offset(off).map(|v| format!("0x{v:08X}")),
-                section: engine.pe.section_of_offset(off).map(|s| s.name.clone()),
-                old: old.clone(),
-                new: hex::format_bytes(
-                    &plan.targets.first().map(|t| t.new.clone()).unwrap_or_default(),
-                ),
-                status: Status::Already.name().to_string(),
-            });
-            first = Some((
-                off,
-                engine.va_of_offset(off),
-                old.clone(),
-                hex::format_bytes(
-                    &plan.targets.first().map(|t| t.new.clone()).unwrap_or_default(),
-                ),
-            ));
+            if plan.targets.is_empty() {
+                // 处理器没给落点 → 只标一个位置（和 M2 的老行为一样）
+                let off = plan.already_at.unwrap_or(0);
+                let old = hex::format_bytes(&engine.data[off..(off + 1).min(engine.data.len())]);
+                locations.push(Location {
+                    offset: off,
+                    offset_hex: format!("0x{off:08X}"),
+                    va: engine.va_of_offset(off),
+                    va_hex: engine.va_of_offset(off).map(|v| format!("0x{v:08X}")),
+                    section: engine.pe.section_of_offset(off).map(|s| s.name.clone()),
+                    old: old.clone(),
+                    new: String::new(),
+                    status: Status::Already.name().to_string(),
+                    note: None,
+                });
+                first = Some((off, engine.va_of_offset(off), old.clone(), String::new()));
+            } else {
+                // 处理器报出了落点（老 → 新，值相同 = 已经是目标状态）
+                for t in &plan.targets {
+                    let old = hex::format_bytes(&t.old);
+                    let new = hex::format_bytes(&t.new);
+                    locations.push(Location {
+                        offset: t.offset,
+                        offset_hex: format!("0x{:08X}", t.offset),
+                        va: t.va,
+                        va_hex: t.va.map(|v| format!("0x{v:08X}")),
+                        section: engine.pe.section_of_offset(t.offset).map(|s| s.name.clone()),
+                        old: old.clone(),
+                        new: new.clone(),
+                        status: Status::Already.name().to_string(),
+                        note: t.note.clone(),
+                    });
+                }
+                if let Some(t) = plan.targets.first() {
+                    first = Some((
+                        t.offset,
+                        t.va,
+                        hex::format_bytes(&t.old),
+                        hex::format_bytes(&t.new),
+                    ));
+                }
+            }
             n_already += 1;
         } else if plan.status == Status::Skipped {
             n_skipped += 1;
@@ -738,14 +805,17 @@ fn resolve_params(table: &PatchTable, resolver: &mut ParamResolver) -> Result<Pa
 
 /// `--set` 给了没人用的参数名 → 提醒一句（多半是打错了）。
 pub fn warn_unused_sets(table: &PatchTable, resolver: &ParamResolver) {
+    // 参数名（ask.key）和补丁 id 都能用来传参
     let declared: std::collections::BTreeSet<&str> = table
         .patches
         .iter()
         .filter_map(|s| s.ask.as_ref().map(|a| a.key.as_str()))
         .collect();
+    let ids: std::collections::BTreeSet<&str> =
+        table.patches.iter().map(|s| s.id.as_str()).collect();
     for k in resolver.cli_sets().keys() {
-        if !declared.contains(k.as_str()) {
-            eprintln!("警告：--set {k}=... 没有任何补丁用这个参数名");
+        if !declared.contains(k.as_str()) && !ids.contains(k.as_str()) {
+            eprintln!("警告：--set {k}=... 没有任何补丁用这个参数名（也没有这样的补丁 id）");
         }
     }
 }
@@ -968,6 +1038,7 @@ fn resolve_patch(
         params: used,
         param_bytes,
         param_bytes_all,
+        param_values: values.clone(),
     })
 }
 
@@ -1101,6 +1172,7 @@ fn compute_target(engine: &Engine, r: &Resolved, off: usize) -> Result<Target> {
         va,
         old: Vec::new(),
         new,
+        note: None,
     })
 }
 
@@ -1310,24 +1382,52 @@ pub fn verify(
         entry.params = r.params.clone();
         let mode = r.mode;
 
-        // 自定义补丁：用处理器自己判断「是不是已经打上了」
-        if mode == Mode::Custom {
-            let Some(handler) = spec.handler.clone() else {
-                entry.reason = Some("custom 模式但没有 handler".into());
-                failed += 1;
-                entries.push(entry);
-                continue;
-            };
+        // 自定义补丁 / Rust 侧登记的升级实现：
+        // 用处理器自己判断「是不是已经打上了」
+        // （表驱动的 replace 只会原地比对字节，看不出「搬到空洞」那种情况）
+        let upgrade = patches::upgrade_handler(&spec.id);
+        let handler = match upgrade {
+            Some(h) => Some(h.to_string()),
+            None => {
+                if mode == Mode::Custom {
+                    match spec.handler.clone() {
+                        Some(h) => Some(h),
+                        None => {
+                            entry.reason = Some("custom 模式但没有 handler".into());
+                            failed += 1;
+                            entries.push(entry);
+                            continue;
+                        }
+                    }
+                } else {
+                    None
+                }
+            }
+        };
+        if let Some(handler) = handler {
             let mut probe = Engine::new(engine.data.clone())?;
-            let outcome = {
-                let mut ctx = Ctx::new(&mut probe);
+            let (outcome, writes, summary) = {
+                let mut ctx = Ctx::new(&mut probe, &r.param_values, r.encoding, &spec.id);
                 ctx.check_only = true;
-                patches::dispatch(&handler, &mut ctx, spec)
+                let o = patches::dispatch(&handler, &mut ctx, spec);
+                (o, ctx.writes, ctx.summary)
             };
+            // 落点信息（报告里能看到「改的是哪几个字节」）
+            if let Some(w) = writes.first() {
+                entry.offset = Some(w.offset);
+                entry.va = engine.va_of_offset(w.offset);
+                entry.expected = Some(hex::format_bytes(&w.new));
+                entry.actual = Some(hex::format_bytes(
+                    &engine.data[w.offset..(w.offset + w.new.len()).min(engine.data.len())],
+                ));
+            }
             match outcome {
                 Ok(Outcome::Already) => {
                     entry.status = "ok".into();
-                    entry.reason = Some("补丁已生效".into());
+                    entry.reason = Some(match summary {
+                        Some(s) => format!("补丁已生效；{s}"),
+                        None => "补丁已生效".into(),
+                    });
                     passed += 1;
                 }
                 Ok(Outcome::Applied) => {

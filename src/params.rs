@@ -126,7 +126,7 @@ impl Source {
 /// 一个已经解析好的参数值。
 #[derive(Debug, Clone, Serialize)]
 pub struct ParamRecord {
-    /// 参数名。
+    /// 参数名（补丁表里 `ask.key` 写的那个）。
     pub key: String,
     /// 参数值（明文）。
     pub value: String,
@@ -135,6 +135,9 @@ pub struct ParamRecord {
     /// 按落地编码转码后的字节数（能转码时才有）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bytes: Option<usize>,
+    /// 如果是按补丁 id 传的（`--set <补丁id>=...`），这里记下那个 id。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub set_as: Option<String>,
 }
 
 /// 参数解析器：把 `--set` / `--interactive` / 表里的 default 汇成一张表。
@@ -182,24 +185,40 @@ impl ParamResolver {
     }
 
     /// 解析一条补丁的参数。同一个 key 只解析一次。
+    ///
+    /// 取值顺序：
+    ///
+    /// 1. `--set <补丁id>=...`（按补丁 id 传，最精确）
+    /// 2. `--set <参数名>=...`
+    /// 3. `--interactive` 交互问
+    /// 4. 补丁表里的 `default`
     pub fn resolve(&mut self, patch_id: &str, ask: &AskSpec) -> Result<ParamRecord> {
-        if let Some(rec) = self.cache.get(&ask.key) {
+        // 按补丁 id 传的值不共用缓存（别的补丁可能用同一个参数名）
+        let by_id = self.sets.contains_key(patch_id);
+        let cache_key = if by_id {
+            format!("{patch_id}\u{1}{}", ask.key)
+        } else {
+            ask.key.clone()
+        };
+        if let Some(rec) = self.cache.get(&cache_key) {
             return Ok(rec.clone());
         }
-        let (value, source) = if let Some(v) = self.sets.get(&ask.key) {
-            (v.clone(), Source::Cli)
+        let (value, source, set_as) = if let Some(v) = self.sets.get(patch_id) {
+            (v.clone(), Source::Cli, Some(patch_id.to_string()))
+        } else if let Some(v) = self.sets.get(&ask.key) {
+            (v.clone(), Source::Cli, None)
         } else if self.interactive {
             let input = prompt(patch_id, ask)?;
             if input.is_empty() {
                 match &ask.default {
-                    Some(d) => (d.clone(), Source::Default),
-                    None => (input, Source::Ask),
+                    Some(d) => (d.clone(), Source::Default, None),
+                    None => (input, Source::Ask, None),
                 }
             } else {
-                (input, Source::Ask)
+                (input, Source::Ask, None)
             }
         } else if let Some(d) = &ask.default {
-            (d.clone(), Source::Default)
+            (d.clone(), Source::Default, None)
         } else {
             bail!(
                 "补丁 {} 需要参数 {}，但没有给值（用 --set {}=... 或 --interactive）",
@@ -215,16 +234,19 @@ impl ParamResolver {
             value,
             source: source.name().to_string(),
             bytes: None,
+            set_as,
         };
-        self.cache.insert(ask.key.clone(), rec.clone());
-        self.order.push(ask.key.clone());
+        self.cache.insert(cache_key.clone(), rec.clone());
+        self.order.push(cache_key);
         Ok(rec)
     }
 
     /// 记下某个参数编码后的字节数（写进报告）。
     pub fn set_bytes(&mut self, key: &str, n: usize) {
-        if let Some(rec) = self.cache.get_mut(key) {
-            rec.bytes = Some(n);
+        for rec in self.cache.values_mut() {
+            if rec.key == key {
+                rec.bytes = Some(n);
+            }
         }
     }
 
@@ -450,9 +472,9 @@ mod tests {
     #[test]
     fn 渲染文本模板() {
         let mut m = ParamValues::new();
-        m.insert("t".into(), "示例".into());
+        m.insert("t".into(), "Example".into());
         let s = render_text("标题：{{t}}！", &m, "测试").unwrap();
-        assert_eq!(s, "标题：示例！");
+        assert_eq!(s, "标题：Example！");
     }
 
     #[test]
@@ -474,9 +496,9 @@ mod tests {
             max: None,
             choices: None,
         };
-        let mut r = ParamResolver::new(vec![("title".into(), "示例".into())], false);
+        let mut r = ParamResolver::new(vec![("title".into(), "Example".into())], false);
         let rec = r.resolve("x", &ask).unwrap();
-        assert_eq!(rec.value, "示例");
+        assert_eq!(rec.value, "Example");
         assert_eq!(rec.source, "cli");
     }
 

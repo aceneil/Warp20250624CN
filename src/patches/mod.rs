@@ -12,6 +12,7 @@
 
 pub mod borderless_fsw;
 pub mod cave;
+pub mod custom_lub;
 pub mod cutin_esc;
 pub mod load_kr_extsettings;
 pub mod map_quality;
@@ -19,10 +20,14 @@ pub mod no_gm_sprite;
 pub mod no_gravity_ads;
 pub mod no_kro_site;
 pub mod official_palette;
+pub mod relocate;
+pub mod window_title;
 
 use anyhow::{anyhow, Result};
 
+use crate::encode::Encoding;
 use crate::engine::Engine;
+use crate::params::ParamValues;
 use crate::table::PatchSpec;
 
 /// 一次写入的记录（报告里 old → new）。
@@ -34,6 +39,8 @@ pub struct Write {
     pub old: Vec<u8>,
     /// 写进去的字节。
     pub new: Vec<u8>,
+    /// 补充说明（报告里显示：指令上下文、imm32 旧值 → 新值……）。
+    pub note: Option<String>,
 }
 
 /// 补丁执行上下文：引擎 + 写入记录。
@@ -45,15 +52,32 @@ pub struct Ctx<'a> {
     pub marker: Option<usize>,
     /// 只检查不真写（`verify` 用）。
     pub check_only: bool,
+    /// 这条补丁的参数值（`ask:` 解析出来的，key → 明文）。
+    pub params: ParamValues,
+    /// 这条补丁实际用的写入编码。
+    pub encoding: Encoding,
+    /// 补丁 id（报告里用）。
+    pub id: String,
+    /// 摘要（报告里显示这条补丁干了什么）。
+    pub summary: Option<String>,
 }
 
 impl<'a> Ctx<'a> {
-    pub fn new(eng: &'a mut Engine) -> Self {
+    pub fn new(
+        eng: &'a mut Engine,
+        params: &ParamValues,
+        encoding: Encoding,
+        id: &str,
+    ) -> Self {
         Ctx {
             eng,
             writes: Vec::new(),
             marker: None,
             check_only: false,
+            params: params.clone(),
+            encoding,
+            id: id.to_string(),
+            summary: None,
         }
     }
 
@@ -68,8 +92,28 @@ impl<'a> Ctx<'a> {
             offset: off,
             old,
             new: bytes.to_vec(),
+            note: None,
         });
         Ok(())
+    }
+
+    /// 写一段字节，并给这次写入附一条说明（报告里显示）。
+    pub fn write_note(&mut self, off: usize, bytes: &[u8], note: String) -> Result<()> {
+        self.write(off, bytes)?;
+        if let Some(w) = self.writes.last_mut() {
+            w.note = Some(note);
+        }
+        Ok(())
+    }
+
+    /// 只记录，不真的写（报告里描述「已经是什么样」时用）。
+    pub fn record(&mut self, off: usize, old: Vec<u8>, new: Vec<u8>, note: Option<String>) {
+        self.writes.push(Write {
+            offset: off,
+            old,
+            new,
+            note,
+        });
     }
 
     /// 在虚拟地址处写一段字节。
@@ -147,12 +191,31 @@ pub fn dispatch(name: &str, ctx: &mut Ctx, spec: &PatchSpec) -> Result<Outcome> 
     match name {
         "borderless-fsw" => borderless_fsw::apply(ctx, spec),
         "cutin-esc" => cutin_esc::apply(ctx, spec),
+        "custom-lub" => custom_lub::apply(ctx, spec),
         "load-kr-extsettings" => load_kr_extsettings::apply(ctx, spec),
         "map-quality" => map_quality::apply(ctx, spec),
         "no-gm-sprite" => no_gm_sprite::apply(ctx, spec),
         "no-gravity-ads" => no_gravity_ads::apply(ctx, spec),
         "no-kro-site" => no_kro_site::apply(ctx, spec),
         "official-palette" => official_palette::apply(ctx, spec),
+        "window-title" => window_title::apply(ctx, spec),
         other => Err(anyhow!("没有这个自定义补丁处理器：{other}")),
     }
+}
+
+/// 「升级」路由表。
+///
+/// 某些补丁表里的**既有条目**（不能改 YAML）需要比表里写的更强的实现，
+/// 就在这里登记一个 Rust 侧的处理器，把那条条目换掉。
+///
+/// 目前只有 `window_title`：M3a 的表驱动写法只能原地覆写 11 字节，
+/// 换成 [`window_title`] 处理器后可以「放不下就搬到空洞」（60 字符）。
+pub const UPGRADES: &[(&str, &str)] = &[("window_title", "window-title")];
+
+/// 查某个补丁 id 有没有登记的「升级版」实现。
+pub fn upgrade_handler(id: &str) -> Option<&'static str> {
+    UPGRADES
+        .iter()
+        .find(|(k, _)| *k == id)
+        .map(|(_, v)| *v)
 }

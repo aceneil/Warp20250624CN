@@ -431,9 +431,13 @@ fn run(cli: Cli) -> Result<i32> {
                 );
             }
             for p in &rep.params {
+                let via = match &p.set_as {
+                    Some(id) => format!("{}（按补丁 id {id} 传的）", p.key),
+                    None => p.key.clone(),
+                };
                 println!(
-                    "参数      : {} = 「{}」（来自 {}）",
-                    p.key, p.value, p.source
+                    "参数      : {via} = 「{}」（来自 {}）",
+                    p.value, p.source
                 );
             }
             for e in &rep.entries {

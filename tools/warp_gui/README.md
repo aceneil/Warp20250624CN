@@ -3,7 +3,7 @@
 把 `warp_rs` 的 CLI 能力（`info / find / apply / verify / langs`）包成一个中文深色桌面前端。
 
 * **同一份前端 + 同一份 Rust 逻辑**，Windows / Linux / macOS 共用；
-* 后续任意的桌面启动器按这套结构演进（逻辑层不依赖 tauri，可直接复用）。
+* 任何桌面启动器都可以按这套结构演进（逻辑层不依赖 tauri，可直接复用）。
 
 ## 界面
 

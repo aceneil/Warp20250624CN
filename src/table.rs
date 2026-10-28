@@ -16,12 +16,45 @@
 use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::params::AskSpec;
+
+/// 表头元信息（语言包用）。
+///
+/// ```yaml
+/// meta:
+///   lang: zh-cn          # 语言代码
+///   name: 简体中文        # 语言名（启动器下拉框显示）
+///   encoding: gbk        # 写进 exe 的字节编码
+/// ```
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct TableMeta {
+    /// 语言代码（zh-cn / en / ja …）。
+    #[serde(default)]
+    pub lang: Option<String>,
+    /// 语言名（显示用）。
+    #[serde(default)]
+    pub name: Option<String>,
+    /// 写进 exe 的字节编码（gbk / cp949 / utf8 / sjis / cp874）。
+    #[serde(default)]
+    pub encoding: Option<String>,
+}
+
+impl TableMeta {
+    /// 表头声明的编码（没有就 None）。
+    pub fn encoding(&self) -> Option<&str> {
+        self.encoding.as_deref()
+    }
+}
+
 /// 补丁表。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PatchTable {
     /// 表格式版本，目前是 1。
     #[serde(default)]
     pub version: u32,
+    /// 表头元信息（语言包用；普通补丁表可以没有）。
+    #[serde(default)]
+    pub meta: Option<TableMeta>,
     /// 补丁条目。
     #[serde(default)]
     pub patches: Vec<PatchSpec>,
@@ -156,6 +189,12 @@ pub struct PatchSpec {
     /// `mode: custom` 时指定用哪个 Rust 处理器（见 `src/patches/`）。
     #[serde(default)]
     pub handler: Option<String>,
+    /// 参数声明（对应 WARP 的 GetUserInput 弹窗）。
+    #[serde(default)]
+    pub ask: Option<AskSpec>,
+    /// 替换字节比 find 短时，把 find 剩下的字节清零（原地覆写不留残渣）。
+    #[serde(default)]
+    pub zero_fill: Option<bool>,
 }
 
 impl PatchSpec {

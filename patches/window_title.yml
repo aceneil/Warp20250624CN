@@ -1,0 +1,35 @@
+# warp_rs 补丁表 —— 自定义客户端窗口标题（WARP 的 Customize Window title）
+#
+# 特征串：.rdata 段里的 "Ragnarok\0" 在这份客户端里命中 3 处：
+#   0xBF2604  独立的 "Ragnarok" —— 就是窗口标题
+#             （代码里 mov eax, 0xFF2604 / mov [0x011ED880], 0xFF2604）
+#   0xBFF3FD  "#Ragnarok"        —— 登录 URL 的一部分，不是标题
+#   0xC2CB46  "Software\Gravity Soft\Ragnarok" —— 注册表路径，不是标题
+#
+# 这里用 "Ragnarok\0\0\0\0"（12 字节，后面跟 3 个 NUL 填充）做**上下文判别**：
+# 在这份客户端里只命中 1 处，不用靠 nth 去猜，也不会打到另外两处。
+#
+# 参数 title：1~60 字符，按 GBK 编码写进 exe（客户端按系统 ANSI 代码页解码）。
+# 写入预算是 11 字节（12 字节的匹配区 - 1 字节结束符），超了会明确报错，不会截断。
+meta:
+  encoding: gbk
+version: 1
+patches:
+  - id: window_title
+    desc: "自定义窗口标题（Customize Window title）"
+    desc_en: "Customize Window title"
+    ask:
+      key: title                  # 参数名，替换串里用 {{title}}
+      label: "请输入新的窗口标题"  # 提示里显示
+      default: "Ragnarok"         # 默认值
+      kind: text                  # text | path | file | enum
+      min: 1                      # 字符数下限
+      max: 60                     # 字符数上限
+    find: "52 61 67 6E 61 72 6F 6B 00 00 00 00"
+    replace: "{{title}}"
+    terminate: true               # 补字符串结束符
+    zero_fill: true               # 匹配区剩下的字节清零，不留残渣
+    section: .rdata
+    expect: 1
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }

@@ -14,6 +14,10 @@
 #   priority 优先级大的先打
 #
 # 目标客户端：2025-06-04 Ragexe（PE32，未加壳，编译时间 20250529，FullVer 14.29）
+#
+# 这张表是「功能补丁表」，不是语言包，所以 meta 里只写编码。
+meta:
+  encoding: gbk
 version: 1
 patches:
   # ---------------------------------------------------------------- 表驱动
@@ -144,3 +148,30 @@ patches:
       （83 E8 0C 74 .. 2D A1 0F 00 00 74 .. 83 E8 16 74 .. EB .. 2D E1 0F 00 00 74 .. 83 E8 24 74 .. 2D 99 00 00 00），
       后面两个「push eax; push 5; call ..」就是 CPc::SetActNameList / SetSprNameList 的调用点；
       函数里的「call IsNameYellow; add esp,4; test al,al; jz ..」的 jz 改成 jmp。
+
+  # ---------------------------------------------------------------- 参数补丁
+  - id: window_title
+    desc: "自定义窗口标题（Customize Window title）"
+    desc_en: "Customize Window title"
+    # 特征串：.rdata 里独立的 "Ragnarok\0\0\0\0"（12 字节）。
+    # 这份客户端里 "Ragnarok\0" 命中 3 处，另外两处是 "#Ragnarok"（登录 URL）
+    # 和 "Software\Gravity Soft\Ragnarok"（注册表路径）；带上后面的 NUL 填充
+    # 做上下文判别，就只剩窗口标题这一处，不用靠 nth 去猜。
+    ask:
+      key: title                  # 参数名，替换串里用 {{title}}
+      label: "请输入新的窗口标题"  # 提示里显示
+      default: "Ragnarok"         # 默认值
+      kind: text                  # text | path | file | enum
+      min: 1                      # 字符数下限
+      max: 60                     # 字符数上限
+    find: "52 61 67 6E 61 72 6F 6B 00 00 00 00"
+    replace: "{{title}}"
+    terminate: true               # 补字符串结束符
+    zero_fill: true               # 匹配区剩下的字节清零，不留残渣
+    section: .rdata
+    expect: 1
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      写入预算是 11 字节（12 字节匹配区 - 1 字节结束符），
+      超了会明确报「参数 title 的文本太长（N 字节，最多 11 字节）」，不会静默截断。

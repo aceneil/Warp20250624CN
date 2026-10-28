@@ -353,7 +353,7 @@ fn 完整中文表_能打完且能校验() {
     let Some(exe) = test_exe() else { return };
     let dir = temp_dir("full");
     let src = temp_copy(&exe, "full");
-    let yml = Path::new(env!("CARGO_MANIFEST_DIR")).join("patches/custom_zh.yml");
+    let yml = Path::new(env!("CARGO_MANIFEST_DIR")).join("patches/lang/zh-cn.yml");
     let out = dir.join("patched.exe");
 
     let (code, text) = run(&[

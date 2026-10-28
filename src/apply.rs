@@ -16,8 +16,9 @@ use serde::Serialize;
 use crate::encode::{self, Encoding};
 use crate::engine::Engine;
 use crate::hex::{self, PatByte};
+use crate::params::{self, ParamRecord, ParamResolver, ParamValues, Source};
 use crate::patches::{self, Ctx, Outcome};
-use crate::table::{Mode, PatchSpec, PatchTable};
+use crate::table::{Mode, PatchSpec, PatchTable, TableMeta};
 
 /// 单条补丁的处理结果状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,6 +111,14 @@ pub struct Entry {
     pub new: Option<String>,
     /// 全部落点。
     pub locations: Vec<Location>,
+    /// 这条补丁实际用的写入编码。
+    pub encoding: String,
+    /// 编码的来源：cli / ask / spec / meta / default。
+    pub encoding_source: String,
+    /// 这条补丁用到的参数（值 + 来源）。
+    pub params: Vec<ParamRecord>,
+    /// 这条补丁的特征串在这个客户端里找不到（版本不符？）。
+    pub not_applicable: bool,
 }
 
 /// 整份补丁的应用报告。
@@ -140,6 +149,14 @@ pub struct Report {
     pub failed: usize,
     /// 是否全部通过。
     pub ok: bool,
+    /// 实际使用的写入编码。
+    pub encoding: String,
+    /// 本次用到的所有参数（值 + 来源）。
+    pub params: Vec<ParamRecord>,
+    /// 多少条补丁在这个客户端里找不到特征（不适用）。
+    pub not_applicable: usize,
+    /// 备注 / 提示。
+    pub notes: Vec<String>,
     /// 每条补丁的明细。
     pub entries: Vec<Entry>,
 }
@@ -153,6 +170,10 @@ pub struct ApplyOptions {
     pub dry_run: bool,
     /// 允许部分失败（失败时也写 out）。
     pub allow_partial: bool,
+    /// 参数来源（`--set` / `--interactive`）。
+    pub params: ParamResolver,
+    /// 命令行指定的写入编码（优先级最高）。
+    pub encoding: Option<Encoding>,
 }
 
 /// 解析后的一条补丁（内部用）。
@@ -167,8 +188,20 @@ struct Resolved {
     repl_pat: Vec<Option<u8>>,
     /// 替换后是否补 `00`。
     terminate: bool,
+    /// 替换字节比 find 短时，把 find 剩下的字节清零。
+    zero_fill: bool,
     /// 搜索范围。
     range: (usize, usize),
+    /// 这条补丁实际用的写入编码。
+    encoding: Encoding,
+    /// 编码的来源：cli / ask / spec / meta / default。
+    encoding_source: Source,
+    /// 这条补丁用到的参数。
+    params: Vec<ParamRecord>,
+    /// 参数文本编码后的字节数（key + 字节数），用于「太长」报错。
+    param_bytes: Option<(String, usize)>,
+    /// 这条补丁用到的每个参数的字节数。
+    param_bytes_all: Vec<(String, usize)>,
 }
 
 /// 一条补丁的落点。
@@ -184,17 +217,59 @@ struct Target {
 pub fn apply(
     data: Vec<u8>,
     table: &PatchTable,
-    opts: &ApplyOptions,
+    opts: &mut ApplyOptions,
 ) -> Result<(Report, Option<Vec<u8>>)> {
     let exe_len = data.len();
     let mut engine = Engine::new(data)?;
     let build_date = engine.pe.build_date_str();
 
+    // 表级编码（命令行 > 表头 meta > 默认 gbk）；meta 写错了要当场报错
+    let table_enc = table_encoding(table, opts.encoding)?;
+
+    // ---------------- 第零阶段：解析参数（ask / --set / --interactive） ----------------
+    let param_values = resolve_params(table, &mut opts.params)?;
+    warn_unused_sets(table, &opts.params);
+
     // ---------------- 第一阶段：解析每条补丁 ----------------
     let mut resolved: Vec<Result<Resolved>> = Vec::with_capacity(table.patches.len());
     for spec in &table.patches {
-        resolved.push(resolve(&engine, spec));
+        resolved.push(resolve_patch(
+            &engine,
+            spec,
+            table.meta.as_ref(),
+            opts.encoding,
+            &param_values,
+            &opts.params,
+        ));
     }
+
+    // 每条补丁用的编码 / 参数（报告要用）
+    let mut encodings: Vec<String> = Vec::with_capacity(table.patches.len());
+    let mut enc_sources: Vec<String> = Vec::with_capacity(table.patches.len());
+    let mut patch_params: Vec<Vec<ParamRecord>> = Vec::with_capacity(table.patches.len());
+    for res in resolved.iter() {
+        match res {
+            Ok(r) => {
+                encodings.push(r.encoding.name().to_string());
+                enc_sources.push(r.encoding_source.name().to_string());
+                patch_params.push(r.params.clone());
+            }
+            Err(_) => {
+                encodings.push(table_enc.name().to_string());
+                enc_sources.push(Source::Default.name().to_string());
+                patch_params.push(Vec::new());
+            }
+        }
+    }
+    // 把参数编码后的字节数记进参数表（报告里能看到「这个值占了几个字节」）
+    for res in resolved.iter() {
+        if let Ok(r) = res {
+            for (k, n) in &r.param_bytes_all {
+                opts.params.set_bytes(k, *n);
+            }
+        }
+    }
+    let param_records = opts.params.records();
 
     // ---------------- 第二阶段：定位所有落点 ----------------
     struct Plan {
@@ -206,6 +281,8 @@ pub fn apply(
         already_at: Option<usize>,
         /// 自定义补丁的处理器名。
         handler: Option<String>,
+        /// 特征串在这个客户端里找不到（版本不符？）。
+        not_applicable: bool,
     }
 
     let mut plans: Vec<Plan> = Vec::with_capacity(table.patches.len());
@@ -217,6 +294,7 @@ pub fn apply(
             targets: Vec::new(),
             already_at: None,
             handler: None,
+            not_applicable: false,
         };
 
         let r = match res {
@@ -288,6 +366,7 @@ pub fn apply(
             } else {
                 plan.status = Status::Fail;
                 plan.reason = Some("未找到 find 模式".into());
+                plan.not_applicable = true;
             }
             plans.push(plan);
             continue;
@@ -585,7 +664,26 @@ pub fn apply(
             old: first.as_ref().map(|f| f.2.clone()),
             new: first.as_ref().map(|f| f.3.clone()),
             locations,
+            encoding: encodings.get(i).cloned().unwrap_or_default(),
+            encoding_source: enc_sources.get(i).cloned().unwrap_or_default(),
+            params: patch_params.get(i).cloned().unwrap_or_default(),
+            not_applicable: plan.not_applicable,
         });
+    }
+
+    let n_not_applicable = plans.iter().filter(|p| p.not_applicable).count();
+    let mut notes: Vec<String> = Vec::new();
+    if n_not_applicable > 0 {
+        notes.push(format!(
+            "{n_not_applicable} 条不适用（客户端版本不符？）"
+        ));
+    }
+    // 有的补丁用 ask 选了别的编码 → 提醒一句（表级编码和实际写入的不一样）
+    if encodings.iter().any(|e| e != &table_enc.name().to_string()) {
+        notes.push(format!(
+            "部分补丁用了和表级不同的写入编码（表级 {}，逐条看 entries[].encoding）",
+            table_enc.name()
+        ));
     }
 
     let ok = n_failed == 0;
@@ -602,6 +700,10 @@ pub fn apply(
         skipped: n_skipped,
         failed: n_failed,
         ok,
+        encoding: table_enc.name().to_string(),
+        params: param_records,
+        not_applicable: n_not_applicable,
+        notes,
         entries,
     };
 
@@ -620,11 +722,131 @@ pub fn apply(
     Ok((report, out_bytes))
 }
 
-/// 解析一条补丁（找模式、替换内容、搜索范围）。
-fn resolve(engine: &Engine, spec: &PatchSpec) -> Result<Resolved> {
+/// 解析所有补丁声明的参数（同一个 key 只问一次）。
+fn resolve_params(table: &PatchTable, resolver: &mut ParamResolver) -> Result<ParamValues> {
+    let mut values = ParamValues::new();
+    for spec in &table.patches {
+        if spec.disabled {
+            continue;
+        }
+        let Some(ask) = &spec.ask else { continue };
+        let rec = resolver.resolve(&spec.id, ask)?;
+        values.insert(rec.key.clone(), rec.value.clone());
+    }
+    Ok(values)
+}
+
+/// `--set` 给了没人用的参数名 → 提醒一句（多半是打错了）。
+pub fn warn_unused_sets(table: &PatchTable, resolver: &ParamResolver) {
+    let declared: std::collections::BTreeSet<&str> = table
+        .patches
+        .iter()
+        .filter_map(|s| s.ask.as_ref().map(|a| a.key.as_str()))
+        .collect();
+    for k in resolver.cli_sets().keys() {
+        if !declared.contains(k.as_str()) {
+            eprintln!("警告：--set {k}=... 没有任何补丁用这个参数名");
+        }
+    }
+}
+
+/// 表级写入编码：命令行 > 表头 meta > 默认 gbk。
+fn table_encoding(table: &PatchTable, cli: Option<Encoding>) -> Result<Encoding> {
+    if let Some(e) = cli {
+        return Ok(e);
+    }
+    match table.meta.as_ref().and_then(|m| m.encoding()) {
+        Some(name) => Encoding::from_name(name).map_err(|_| {
+            anyhow::anyhow!(
+                "补丁表 meta.encoding 的值「{name}」不是支持的编码（期望 gbk / cp949 / utf8 / sjis / cp874）"
+            )
+        }),
+        None => Ok(Encoding::Gbk),
+    }
+}
+
+/// 挑一条补丁实际用的写入编码。
+///
+/// 优先级（从高到低）：
+///
+/// 1. 命令行 `--encoding`
+/// 2. 本条补丁 ask 出来的值（`ask.key == "encoding"`，一般是 `kind: enum`）
+/// 3. 本条补丁的 `encoding:` 字段
+/// 4. 表头 `meta.encoding`
+/// 5. 默认 gbk
+fn pick_encoding(
+    spec: &PatchSpec,
+    meta: Option<&TableMeta>,
+    cli: Option<Encoding>,
+    values: &ParamValues,
+) -> Result<(Encoding, Source)> {
+    if let Some(e) = cli {
+        return Ok((e, Source::Cli));
+    }
+    if let Some(ask) = &spec.ask {
+        if ask.key == "encoding" {
+            if let Some(v) = values.get("encoding") {
+                let e = Encoding::from_name(v).map_err(|_| {
+                    anyhow::anyhow!(
+                        "参数 encoding 的值「{v}」不是支持的编码（期望 gbk / cp949 / utf8 / sjis / cp874）"
+                    )
+                })?;
+                return Ok((e, Source::Ask));
+            }
+        }
+    }
+    if let Some(name) = &spec.encoding {
+        let e = Encoding::from_name(name).map_err(|_| {
+            anyhow::anyhow!(
+                "补丁 {} 的 encoding 的值「{name}」不是支持的编码（期望 gbk / cp949 / utf8 / sjis / cp874）",
+                spec.id
+            )
+        })?;
+        return Ok((e, Source::Spec));
+    }
+    if let Some(name) = meta.and_then(|m| m.encoding()) {
+        let e = Encoding::from_name(name).map_err(|_| {
+            anyhow::anyhow!(
+                "补丁表 meta.encoding 的值「{name}」不是支持的编码（期望 gbk / cp949 / utf8 / sjis / cp874）"
+            )
+        })?;
+        return Ok((e, Source::Meta));
+    }
+    Ok((Encoding::Gbk, Source::Default))
+}
+
+/// 模板里用到了某个参数吗？
+fn template_uses(template: &str, key: &str) -> bool {
+    params::split_template(template)
+        .iter()
+        .any(|p| matches!(p, params::Part::Placeholder(k) if k == key))
+}
+
+/// 解析一条补丁（找模式、替换内容、搜索范围、编码、参数）。
+fn resolve_patch(
+    engine: &Engine,
+    spec: &PatchSpec,
+    meta: Option<&TableMeta>,
+    cli_encoding: Option<Encoding>,
+    values: &ParamValues,
+    resolver: &ParamResolver,
+) -> Result<Resolved> {
     let mode = spec.mode()?;
+    let (encoding, encoding_source) = pick_encoding(spec, meta, cli_encoding, values)?;
+    let who = format!("补丁 {}", spec.id);
+
+    // ---- find：hex，或者带 {{参数}} 的模板
     let find = if mode == Mode::Custom {
         Vec::new()
+    } else if params::has_placeholder(&spec.find) {
+        let bytes = params::render_hex(&spec.find, values, encoding, &who)?;
+        bytes
+            .into_iter()
+            .map(|b| PatByte {
+                value: b,
+                mask: 0xFF,
+            })
+            .collect()
     } else {
         hex::parse_pattern(&spec.find)
             .with_context(|| format!("find 模式解析失败：{}", spec.find))?
@@ -636,22 +858,51 @@ fn resolve(engine: &Engine, spec: &PatchSpec) -> Result<Resolved> {
     let mut terminate = spec.terminate.unwrap_or(false);
     match mode {
         Mode::Replace => {
-            if let Some(hexstr) = &spec.replace {
-                // 允许 `??` 通配：通配位表示「保留原字节」
-                repl_pat = hex::parse_replace(hexstr)
-                    .with_context(|| format!("replace 字节串解析失败：{hexstr}"))?;
-            } else if let Some(text) = &spec.text {
-                let enc = match &spec.encoding {
-                    Some(name) => Encoding::from_name(name)?,
-                    None => Encoding::Gbk,
-                };
-                repl = encode::encode(text, enc)?;
-                // 文本补丁默认补字符串结束符（和 WARP 的 SetText 一致）
-                if spec.terminate.is_none() {
-                    terminate = true;
+            // replace：hex（允许 ?? 通配），也可以是带 {{参数}} 的 hex 模板
+            let replace_pat: Option<Vec<Option<u8>>> = match &spec.replace {
+                Some(h) if !params::has_placeholder(h) => Some(
+                    hex::parse_replace(h)
+                        .with_context(|| format!("replace 字节串解析失败：{h}"))?,
+                ),
+                _ => None,
+            };
+            let replace_bytes: Option<Vec<u8>> = match (&spec.replace, &replace_pat) {
+                (Some(h), _) if params::has_placeholder(h) => {
+                    Some(params::render_hex(h, values, encoding, &who)?)
                 }
-            } else {
-                bail!("补丁 {} 既没有 replace 也没有 text", spec.id);
+                (_, Some(pat)) => Some(pat.iter().map(|o| o.unwrap_or(0)).collect()),
+                _ => None,
+            };
+            // text：UTF-8 明文（也可以带 {{参数}}），按落地编码转码
+            let text_bytes: Option<Vec<u8>> = match &spec.text {
+                Some(t) => Some(text_to_bytes(t, values, encoding, &who)?),
+                None => None,
+            };
+
+            match (text_bytes, replace_bytes.clone()) {
+                (Some(tb), Some(rb)) => {
+                    // 两个都给：text 生效，replace 作为校验对照
+                    check_text_vs_replace(spec, &tb, &rb, &replace_pat)?;
+                    repl = tb;
+                }
+                (Some(tb), None) => {
+                    repl = tb;
+                    // 文本补丁默认补字符串结束符（和 WARP 的 SetText 一致）
+                    if spec.terminate.is_none() {
+                        terminate = true;
+                    }
+                }
+                (None, Some(_)) => {
+                    // 纯 hex 替换（可能带 ?? 通配）
+                    if let Some(pat) = replace_pat {
+                        repl_pat = pat;
+                    } else {
+                        repl = replace_bytes.unwrap_or_default();
+                    }
+                }
+                (None, None) => {
+                    bail!("补丁 {} 既没有 replace 也没有 text", spec.id);
+                }
             }
         }
         Mode::Nop => {
@@ -673,6 +924,36 @@ fn resolve(engine: &Engine, spec: &PatchSpec) -> Result<Resolved> {
         }
     }
 
+    // ---- 这条补丁用到的参数（写进报告）
+    let mut used: Vec<ParamRecord> = Vec::new();
+    let mut param_bytes: Option<(String, usize)> = None;
+    let mut param_bytes_all: Vec<(String, usize)> = Vec::new();
+    for (k, v) in values {
+        let used_here = template_uses(&spec.find, k)
+            || spec.replace.as_deref().map(|t| template_uses(t, k)).unwrap_or(false)
+            || spec.text.as_deref().map(|t| template_uses(t, k)).unwrap_or(false);
+        if !used_here {
+            continue;
+        }
+        let n = encode::encode_for(v, encoding, k)?.len();
+        param_bytes_all.push((k.clone(), n));
+        if param_bytes.as_ref().map(|(_, m)| n > *m).unwrap_or(true) {
+            param_bytes = Some((k.clone(), n));
+        }
+        if let Some(rec) = resolver.get(k) {
+            let mut rec = rec.clone();
+            rec.bytes = Some(n);
+            used.push(rec);
+        }
+    }
+    if let Some(ask) = &spec.ask {
+        if let Some(rec) = resolver.get(&ask.key) {
+            if !used.iter().any(|r| r.key == rec.key) {
+                used.push(rec.clone());
+            }
+        }
+    }
+
     Ok(Resolved {
         spec: spec.clone(),
         mode,
@@ -680,8 +961,68 @@ fn resolve(engine: &Engine, spec: &PatchSpec) -> Result<Resolved> {
         repl,
         repl_pat,
         terminate,
+        zero_fill: spec.zero_fill.unwrap_or(false),
         range,
+        encoding,
+        encoding_source,
+        params: used,
+        param_bytes,
+        param_bytes_all,
     })
+}
+
+/// `text:`（UTF-8 明文）→ 落地字节。
+///
+/// 先逐个校验参数（报错要指出是哪个 key 的哪个字符），再整体转码。
+fn text_to_bytes(
+    template: &str,
+    values: &ParamValues,
+    encoding: Encoding,
+    who: &str,
+) -> Result<Vec<u8>> {
+    for (k, v) in values {
+        if template_uses(template, k) {
+            encode::encode_for(v, encoding, k)?;
+        }
+    }
+    let text = params::render_text(template, values, who)?;
+    encode::encode_for(&text, encoding, who)
+}
+
+/// `text:` 和 `replace:` 都给时：text 生效，replace 作为校验对照。
+fn check_text_vs_replace(
+    spec: &PatchSpec,
+    text_bytes: &[u8],
+    replace_bytes: &[u8],
+    replace_pat: &Option<Vec<Option<u8>>>,
+) -> Result<()> {
+    let mismatch = match replace_pat {
+        // 有 ?? 通配：只比对固定位
+        Some(pat) => pat.iter().enumerate().any(|(i, o)| match o {
+            Some(v) => text_bytes.get(i) != Some(v),
+            None => false,
+        }),
+        None => text_bytes != replace_bytes,
+    };
+    ensure!(
+        !mismatch,
+        "补丁 {} 同时给了 text 和 replace，但两者对不上（text 转码后 {}，replace {}）；以 text 为准时请把 replace 改成一样的",
+        spec.id,
+        hex::format_bytes(text_bytes),
+        hex::format_bytes(replace_bytes)
+    );
+    Ok(())
+}
+
+/// 从 `from` 开始连续有多少个 0x00（用来算「借用写入预算」）。
+fn nul_padding(engine: &Engine, from: usize) -> usize {
+    let mut n = 0usize;
+    let mut i = from;
+    while i < engine.data.len() && engine.data[i] == 0x00 {
+        n += 1;
+        i += 1;
+    }
+    n
 }
 
 /// 算一个落点要写什么字节，并做长度 / 边界校验。
@@ -696,36 +1037,45 @@ fn compute_target(engine: &Engine, r: &Resolved, off: usize) -> Result<Target> {
                 let end = (off + r.repl_pat.len()).min(engine.data.len());
                 hex::resolve_replace(&r.repl_pat, &engine.data[off..end])?
             };
-            // 铁律：替换字节数 ≤ find 字节数（原地覆写）；
+            if r.terminate {
+                buf.push(0x00);
+            }
+            // 写入预算：find 的长度 + 后面连续的 0x00 填充。
             // 例外：允许借用紧跟在匹配之后的连续 0x00 填充 —— 只覆盖 NUL，
             // 不碰任何非零数据，也不会跨段。
-            if buf.len() > r.find.len() {
-                let mut pad = 0usize;
-                let mut i = off + r.find.len();
-                while i < engine.data.len() && engine.data[i] == 0x00 {
-                    pad += 1;
-                    i += 1;
+            let pad = nul_padding(engine, off + r.find.len());
+            let limit = if r.zero_fill {
+                r.find.len()
+            } else {
+                r.find.len() + pad
+            };
+            if buf.len() > limit {
+                // 参数太长：明确报错，不静默截断
+                if let Some((key, n)) = &r.param_bytes {
+                    let max = limit.saturating_sub(if r.terminate { 1 } else { 0 });
+                    bail!("参数 {key} 的文本太长（{n} 字节，最多 {max} 字节）");
                 }
-                ensure!(
-                    buf.len() <= r.find.len() + pad,
-                    "替换字节数 {} 超过 find 的 {} 字节（尾部可用 NUL 填充 {} 字节），跳过",
+                if r.zero_fill {
+                    bail!(
+                        "替换字节数 {} 超过 find 的 {} 字节（zero_fill 要求整段覆写）",
+                        buf.len(),
+                        r.find.len()
+                    );
+                }
+                bail!(
+                    "替换字节数 {} 超过 find 的 {} 字节（尾部可用 NUL 填充 {} 字节）",
                     buf.len(),
                     r.find.len(),
                     pad
                 );
+            }
+            if r.zero_fill {
+                // 整段覆写：剩下的字节清零，不留残渣
+                buf.resize(r.find.len(), 0);
+            }
+            if buf.len() > r.find.len() {
                 // 借用填充时，落地范围必须仍在同一段内
                 engine.check_write(off, buf.len())?;
-            }
-            if r.terminate {
-                buf.push(0x00);
-                if buf.len() > r.find.len() {
-                    // 允许超出 1 字节，但那一字节必须本来就是字符串结束符
-                    let tail = off + r.find.len();
-                    ensure!(
-                        tail < engine.data.len() && engine.data[tail] == 0x00,
-                        "替换后需要补结束符，但会覆盖非 0x00 的字节（偏移 0x{tail:X}），跳过"
-                    );
-                }
             }
             buf
         }
@@ -844,6 +1194,10 @@ pub struct VerifyResult {
     pub passed: usize,
     pub failed: usize,
     pub skipped: usize,
+    /// 实际使用的写入编码。
+    pub encoding: String,
+    /// 本次用到的所有参数（值 + 来源）。
+    pub params: Vec<ParamRecord>,
     pub entries: Vec<VerifyEntry>,
 }
 
@@ -864,18 +1218,42 @@ pub struct VerifyEntry {
     pub expected: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actual: Option<String>,
+    /// 这条补丁实际用的写入编码。
+    pub encoding: String,
+    /// 编码的来源：cli / ask / spec / meta / default。
+    pub encoding_source: String,
+    /// 这条补丁用到的参数。
+    pub params: Vec<ParamRecord>,
+}
+
+/// `verify` 的参数。
+#[derive(Debug, Clone, Default)]
+pub struct VerifyOptions {
+    /// 参数来源（`--set` / `--interactive`）。
+    pub params: ParamResolver,
+    /// 命令行指定的写入编码（必须和 apply 时一致）。
+    pub encoding: Option<Encoding>,
 }
 
 /// 校验：每条补丁的替换内容是否已经在文件里。
 ///
 /// 给了 `original` 时用原始文件定位落点（最准）；没给就退化成
 /// 「替换字节是否出现在搜索范围里」。
-pub fn verify(data: Vec<u8>, table: &PatchTable, original: Option<&[u8]>) -> Result<VerifyResult> {
+pub fn verify(
+    data: Vec<u8>,
+    table: &PatchTable,
+    original: Option<&[u8]>,
+    opts: &mut VerifyOptions,
+) -> Result<VerifyResult> {
     let engine = Engine::new(data)?;
     let orig_engine = match original {
         Some(o) => Some(Engine::new(o.to_vec())?),
         None => None,
     };
+    let table_enc = table_encoding(table, opts.encoding)?;
+    let param_values = resolve_params(table, &mut opts.params)?;
+    warn_unused_sets(table, &opts.params);
+    let param_records = opts.params.records();
 
     let mut entries = Vec::new();
     let (mut passed, mut failed, mut skipped) = (0, 0, 0);
@@ -890,6 +1268,9 @@ pub fn verify(data: Vec<u8>, table: &PatchTable, original: Option<&[u8]>) -> Res
             va: None,
             expected: None,
             actual: None,
+            encoding: table_enc.name().to_string(),
+            encoding_source: Source::Default.name().to_string(),
+            params: Vec::new(),
         };
 
         if spec.disabled {
@@ -907,7 +1288,27 @@ pub fn verify(data: Vec<u8>, table: &PatchTable, original: Option<&[u8]>) -> Res
             continue;
         }
 
-        let mode = spec.mode().unwrap_or(Mode::Replace);
+        // 解析（和 apply 用同一套逻辑：同样的编码、同样的参数 → 同样的期望字节）
+        let r = match resolve_patch(
+            &engine,
+            spec,
+            table.meta.as_ref(),
+            opts.encoding,
+            &param_values,
+            &opts.params,
+        ) {
+            Ok(r) => r,
+            Err(e) => {
+                entry.reason = Some(format!("{e:#}"));
+                failed += 1;
+                entries.push(entry);
+                continue;
+            }
+        };
+        entry.encoding = r.encoding.name().to_string();
+        entry.encoding_source = r.encoding_source.name().to_string();
+        entry.params = r.params.clone();
+        let mode = r.mode;
 
         // 自定义补丁：用处理器自己判断「是不是已经打上了」
         if mode == Mode::Custom {
@@ -954,28 +1355,11 @@ pub fn verify(data: Vec<u8>, table: &PatchTable, original: Option<&[u8]>) -> Res
             continue;
         }
 
-        // replace 里允许 `??`（= 保留原字节）
-        let repl_pat: Vec<Option<u8>> = if let Some(h) = &spec.replace {
-            hex::parse_replace(h).unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-        let repl: Vec<u8> = if mode == Mode::Nop {
-            vec![0x90u8; spec.nop_len.unwrap_or_else(|| hex::parse_pattern(&spec.find).map(|p| p.len()).unwrap_or(1))]
-        } else if !repl_pat.is_empty() {
-            Vec::new()
-        } else if let Some(h) = &spec.replace {
-            hex::parse_bytes(h).unwrap_or_default()
-        } else if let Some(t) = &spec.text {
-            let enc = match &spec.encoding {
-                Some(n) => Encoding::from_name(n).unwrap_or(Encoding::Gbk),
-                None => Encoding::Gbk,
-            };
-            encode::encode(t, enc).unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-        let terminate = spec.terminate.unwrap_or(spec.text.is_some() && mode == Mode::Replace);
+        // 替换内容（和 apply 用同一份解析结果）
+        let repl_pat: Vec<Option<u8>> = r.repl_pat.clone();
+        let repl: Vec<u8> = r.repl.clone();
+        let terminate = r.terminate;
+        let find_pat = r.find.clone();
         let mut expected = repl.clone();
         if terminate {
             expected.push(0x00);
@@ -997,7 +1381,7 @@ pub fn verify(data: Vec<u8>, table: &PatchTable, original: Option<&[u8]>) -> Res
                 Ok(r) => r,
                 Err(_) => (0, orig.data.len()),
             };
-            let hits = orig.find_pattern(&hex::parse_pattern(&spec.find)?, orig_range);
+            let hits = orig.find_pattern(&find_pat, orig_range);
             let selected: Vec<usize> = if spec.all {
                 hits.clone()
             } else if spec.last {
@@ -1085,6 +1469,8 @@ pub fn verify(data: Vec<u8>, table: &PatchTable, original: Option<&[u8]>) -> Res
         passed,
         failed,
         skipped,
+        encoding: table_enc.name().to_string(),
+        params: param_records,
         entries,
     })
 }

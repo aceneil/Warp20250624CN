@@ -24,10 +24,10 @@ WARP 老格式长这样（`-` 开头一条，`desc` / `find` / `replace` / `star
 用法::
 
     # 只做格式转换（不碰 exe，find/expect 等字段留空）
-    python3 scripts/import_warp_txt.py warp_custom_zh.txt -o patches/zh-cn.yml
+    python3 scripts/import_warp_txt.py warp_custom_zh.txt -o patches/lang/zh-cn.yml
 
     # 带客户端 exe：自动算段、命中数、第几次命中、要不要补字符串结束符
-    python3 scripts/import_warp_txt.py warp_custom_zh.txt -o patches/zh-cn.yml \
+    python3 scripts/import_warp_txt.py warp_custom_zh.txt -o patches/lang/zh-cn.yml \
         --exe <fixtures>/2025-06-04_Ragexe_neil.exe
 
 只依赖 Python3 标准库。

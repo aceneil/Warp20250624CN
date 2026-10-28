@@ -1,30 +1,36 @@
-//! warp_rs ——  客户端补丁引擎（WARP 核心能力的 Rust 重写）。
+//! warp_rs —— ExampleRO 客户端补丁引擎（WARP 核心能力的 Rust 重写）。
 //!
 //! ```text
 //! warp_rs info   --exe <path>
 //! warp_rs find   --exe <path> --hex "<hex>" [--section .data] [--nth N] [--last]
 //! warp_rs apply  --exe <in> --patches <yml> --out <out> [--report <json>] [--dry-run]
-//! warp_rs verify --exe <patched> --patches <yml> [--json]
+//!                [--set key=value] [--interactive] [--encoding gbk]
+//! warp_rs verify --exe <patched> --patches <yml> [--json] [--encoding gbk]
+//! warp_rs langs  --dir patches/lang [--json]
 //! ```
 
 mod apply;
 mod encode;
 mod engine;
 mod hex;
+mod langs;
+mod params;
 mod patches;
 mod pe;
 mod table;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 
-use apply::ApplyOptions;
+use apply::{ApplyOptions, VerifyOptions};
 use encode::Encoding;
+use params::ParamResolver;
+use table::PatchTable;
 
 #[derive(Parser)]
-#[command(name = "warp_rs", about = " 客户端补丁引擎（WARP 核心的 Rust 实现）")]
+#[command(name = "warp_rs", about = "ExampleRO 客户端补丁引擎（WARP 核心的 Rust 实现）")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -136,6 +142,15 @@ enum Cmd {
         /// 允许部分失败（失败也写 out）
         #[arg(long)]
         allow_partial: bool,
+        /// 给补丁表里的参数赋值：--set key=value（可重复）
+        #[arg(long = "set", value_name = "KEY=VALUE", allow_hyphen_values = true)]
+        set: Vec<String>,
+        /// 交互式：逐条问用户要参数值
+        #[arg(long)]
+        interactive: bool,
+        /// 写入编码：gbk / cp949 / utf8 / sjis / cp874（优先级最高）
+        #[arg(long)]
+        encoding: Option<String>,
     },
     /// 校验一个 exe 是否已经打好补丁
     Verify {
@@ -148,6 +163,25 @@ enum Cmd {
         /// 原始（未打补丁）exe —— 给了就能精确定位落点
         #[arg(long)]
         original: Option<PathBuf>,
+        /// 输出 JSON
+        #[arg(long)]
+        json: bool,
+        /// 给补丁表里的参数赋值：--set key=value（可重复）
+        #[arg(long = "set", value_name = "KEY=VALUE", allow_hyphen_values = true)]
+        set: Vec<String>,
+        /// 交互式：逐条问用户要参数值
+        #[arg(long)]
+        interactive: bool,
+        /// 写入编码：必须和 apply 时一致
+        #[arg(long)]
+        encoding: Option<String>,
+    },
+
+    /// 列出语言包（启动器下拉框用）
+    Langs {
+        /// 语言包目录
+        #[arg(long, default_value = "patches/lang")]
+        dir: PathBuf,
         /// 输出 JSON
         #[arg(long)]
         json: bool,
@@ -351,15 +385,25 @@ fn run(cli: Cli) -> Result<i32> {
             report,
             dry_run,
             allow_partial,
+            set,
+            interactive,
+            encoding,
         } => {
             let data = std::fs::read(&exe).with_context(|| format!("读 {} 失败", exe.display()))?;
             let tbl = table::PatchTable::load(&patches)?;
-            let opts = ApplyOptions {
+            let cli_enc = match &encoding {
+                Some(n) => Some(Encoding::from_name(n)?),
+                None => None,
+            };
+            warn_meta(&patches, &tbl, cli_enc);
+            let mut opts = ApplyOptions {
                 out: Some(out.clone()),
                 dry_run,
                 allow_partial,
+                params: ParamResolver::new(parse_sets(&set)?, interactive),
+                encoding: cli_enc,
             };
-            let (mut rep, out_bytes) = apply::apply(data, &tbl, &opts)?;
+            let (mut rep, out_bytes) = apply::apply(data, &tbl, &mut opts)?;
             rep.exe = exe.display().to_string();
             rep.patches = patches.display().to_string();
             rep.out = if dry_run {
@@ -371,6 +415,7 @@ fn run(cli: Cli) -> Result<i32> {
             // 打印摘要
             println!("补丁表    : {}", patches.display());
             println!("输入 exe  : {}", exe.display());
+            println!("写入编码  : {}", rep.encoding);
             println!(
                 "编译时间  : {}",
                 rep.build_date
@@ -379,6 +424,18 @@ fn run(cli: Cli) -> Result<i32> {
                 "合计 {} 条：打上 {} / 已存在 {} / 跳过 {} / 失败 {}",
                 rep.total, rep.applied, rep.already, rep.skipped, rep.failed
             );
+            if rep.not_applicable > 0 {
+                println!(
+                    "{} 条不适用（客户端版本不符？）",
+                    rep.not_applicable
+                );
+            }
+            for p in &rep.params {
+                println!(
+                    "参数      : {} = 「{}」（来自 {}）",
+                    p.key, p.value, p.source
+                );
+            }
             for e in &rep.entries {
                 let mark = match e.status.as_str() {
                     "applied" => "✔",
@@ -428,26 +485,45 @@ fn run(cli: Cli) -> Result<i32> {
             patches,
             original,
             json,
+            set,
+            interactive,
+            encoding,
         } => {
             let data = std::fs::read(&exe).with_context(|| format!("读 {} 失败", exe.display()))?;
             let tbl = table::PatchTable::load(&patches)?;
+            let cli_enc = match &encoding {
+                Some(n) => Some(Encoding::from_name(n)?),
+                None => None,
+            };
+            warn_meta(&patches, &tbl, cli_enc);
             let orig = match &original {
                 Some(p) => Some(
                     std::fs::read(p).with_context(|| format!("读 {} 失败", p.display()))?,
                 ),
                 None => None,
             };
-            let res = apply::verify(data, &tbl, orig.as_deref())?;
+            let mut opts = VerifyOptions {
+                params: ParamResolver::new(parse_sets(&set)?, interactive),
+                encoding: cli_enc,
+            };
+            let res = apply::verify(data, &tbl, orig.as_deref(), &mut opts)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&res)?);
             } else {
                 println!(
-                    "校验 {}：通过 {} / 跳过 {} / 失败 {}",
+                    "校验 {}：通过 {} / 跳过 {} / 失败 {}（编码 {}）",
                     exe.display(),
                     res.passed,
                     res.skipped,
-                    res.failed
+                    res.failed,
+                    res.encoding
                 );
+                for p in &res.params {
+                    println!(
+                        "参数      : {} = 「{}」（来自 {}）",
+                        p.key, p.value, p.source
+                    );
+                }
                 for e in &res.entries {
                     let mark = match e.status.as_str() {
                         "ok" => "✔",
@@ -463,6 +539,49 @@ fn run(cli: Cli) -> Result<i32> {
                 }
             }
             Ok(if res.ok { 0 } else { 1 })
+        }
+        Cmd::Langs { dir, json } => {
+            let list = langs::scan(&dir)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&list)?);
+            } else {
+                print!("{}", langs::format_table(&dir, &list));
+            }
+            Ok(0)
+        }
+    }
+}
+
+/// 解析 `--set key=value`（值里可以有中文、空格、`=`）。
+fn parse_sets(items: &[String]) -> Result<Vec<(String, String)>> {
+    let mut out = Vec::new();
+    for it in items {
+        let Some((k, v)) = it.split_once('=') else {
+            bail!("--set 的格式必须是 key=value：{it}");
+        };
+        let k = k.trim();
+        if k.is_empty() {
+            bail!("--set 的参数名不能为空：{it}");
+        }
+        out.push((k.to_string(), v.to_string()));
+    }
+    Ok(out)
+}
+
+/// 表头 meta 缺失 / 缺 encoding 时给个提示（不是错误）。
+fn warn_meta(path: &Path, tbl: &PatchTable, cli: Option<Encoding>) {
+    match &tbl.meta {
+        None => eprintln!(
+            "警告：补丁表 {} 没有 meta（lang / name / encoding）信息，按 UTF-8 解析、按 gbk 写入",
+            path.display()
+        ),
+        Some(m) => {
+            if m.encoding.is_none() && cli.is_none() {
+                eprintln!(
+                    "提示：补丁表 {} 的 meta.encoding 缺省，按 gbk 写入",
+                    path.display()
+                );
+            }
         }
     }
 }

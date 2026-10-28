@@ -15,6 +15,9 @@ use std::process::Command;
 
 use serde_json::Value;
 
+/// M3a 追加的参数补丁（顺序 = base.yml 里的顺序，排在最后）。
+const PARAM_PATCH_IDS: [&str; 1] = ["window_title"];
+
 /// M2 的 10 条补丁（顺序 = base.yml 里的顺序）。
 const PATCH_IDS: [&str; 10] = [
     "zoom-max",
@@ -100,7 +103,11 @@ fn m2_十条补丁_全部命中_且幂等() {
     assert_eq!(code, 0, "第一次打补丁失败：\n{text}");
 
     let rep: Value = serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
-    assert_eq!(rep["total"].as_u64().unwrap(), 10, "补丁总数不对");
+    assert_eq!(
+        rep["total"].as_u64().unwrap(),
+        11,
+        "补丁总数不对（M2 的 10 条 + M3a 的窗口标题 1 条）"
+    );
     assert_eq!(rep["failed"].as_u64().unwrap(), 0, "有补丁失败：\n{text}");
     assert_eq!(rep["ok"].as_bool().unwrap(), true);
 
@@ -108,11 +115,16 @@ fn m2_十条补丁_全部命中_且幂等() {
     let out = std::fs::read(&patched).unwrap();
 
     let entries = rep["entries"].as_array().unwrap();
-    assert_eq!(entries.len(), 10);
+    assert_eq!(entries.len(), 11);
 
     for (i, entry) in entries.iter().enumerate() {
         let id = entry["id"].as_str().unwrap();
-        assert_eq!(id, PATCH_IDS[i], "补丁顺序/数量不对");
+        let want = if i < PATCH_IDS.len() {
+            PATCH_IDS[i]
+        } else {
+            PARAM_PATCH_IDS[i - PATCH_IDS.len()]
+        };
+        assert_eq!(id, want, "补丁顺序/数量不对");
         let status = entry["status"].as_str().unwrap();
         assert!(
             status == "applied" || status == "already",
@@ -136,7 +148,8 @@ fn m2_十条补丁_全部命中_且幂等() {
         assert!(!locs.is_empty(), "补丁 {id} 没有落点");
     }
 
-    // 关键落点：必须有实际改动
+    // 关键落点：必须有实际改动（M2 的 10 条）
+    // （M3a 的窗口标题用默认值 "Ragnarok"，和 exe 里本来就一样，不算改动）
     for id in PATCH_IDS {
         let e = entries
             .iter()
@@ -196,10 +209,17 @@ fn m2_补丁表本身是合法的() {
     // 表里的每条都要有 desc（中文（English）格式）和 desc_en
     let text = std::fs::read_to_string(patch_table()).unwrap();
     assert!(text.contains("version: 1"));
-    for id in PATCH_IDS {
+    for id in PATCH_IDS.iter().chain(PARAM_PATCH_IDS.iter()) {
         assert!(text.contains(&format!("id: {id}")), "补丁表里没有 {id}");
     }
-    assert_eq!(text.matches("  - id: ").count(), 10, "补丁表里不是 10 条");
+    assert_eq!(
+        text.matches("  - id: ").count(),
+        11,
+        "补丁表里不是 11 条（M2 的 10 条 + 窗口标题 1 条）"
+    );
+    // 参数补丁要声明 ask（key / 默认值 / 长度上下限）
+    assert!(text.contains("key: title"), "窗口标题补丁没有声明参数");
+    assert!(text.contains("default: \"Ragnarok\""), "窗口标题补丁没有默认值");
 }
 
 /// 辅助：确认测试 exe 没被我们动过（补丁只能打在副本上）。

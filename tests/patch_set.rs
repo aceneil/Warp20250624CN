@@ -18,18 +18,16 @@ use serde_json::Value;
 /// M3a 追加的参数补丁（顺序 = base.yml 里的顺序，排在最后）。
 const PARAM_PATCH_IDS: [&str; 1] = ["window_title"];
 
-/// M2 的 10 条补丁（顺序 = base.yml 里的顺序）。
-const PATCH_IDS: [&str; 10] = [
+/// base.yml 里的补丁（顺序 = 表里的顺序）。
+/// 兜底项（load-kr-extsettings / no-gm-sprite / window_title）在 optional.yml，不在这里。
+const PATCH_IDS: [&str; 7] = [
     "zoom-max",
     "always-ascii",
     "borderless-fsw",
     "cutin-esc",
     "map-quality",
-    "no-gravity-ads",
     "no-kro-site",
     "official-palette",
-    "load-kr-extsettings",
-    "no-gm-sprite",
 ];
 
 fn test_exe() -> Option<PathBuf> {
@@ -211,20 +209,29 @@ fn m2_十条补丁_全部命中_且幂等() {
 
 #[test]
 fn m2_补丁表本身是合法的() {
-    // 表里的每条都要有 desc（中文（English）格式）和 desc_en
+    // base.yml：7 条功能补丁，每条都要有 id
     let text = std::fs::read_to_string(patch_table()).unwrap();
     assert!(text.contains("version: 1"));
-    for id in PATCH_IDS.iter().chain(PARAM_PATCH_IDS.iter()) {
+    for id in PATCH_IDS.iter() {
         assert!(text.contains(&format!("id: {id}")), "补丁表里没有 {id}");
     }
     assert_eq!(
         text.matches("  - id: ").count(),
-        11,
-        "补丁表里不是 11 条（M2 的 10 条 + 窗口标题 1 条）"
+        7,
+        "base.yml 里不是 7 条"
     );
-    // 参数补丁要声明 ask（key / 默认值 / 长度上下限）
-    assert!(text.contains("key: title"), "窗口标题补丁没有声明参数");
-    assert!(text.contains("default: \"Ragnarok\""), "窗口标题补丁没有默认值");
+    assert!(!text.contains("no-gravity-ads"), "no-gravity-ads 应已移除");
+
+    // optional.yml：兜底项 + 参数补丁
+    let opt = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("patches/optional.yml"),
+    )
+    .unwrap();
+    for id in PARAM_PATCH_IDS.iter().chain(["load-kr-extsettings", "no-gm-sprite"].iter()) {
+        assert!(opt.contains(&format!("id: {id}")), "optional.yml 里没有 {id}");
+    }
+    assert!(opt.contains("key: title"), "窗口标题补丁没有声明参数");
+    assert!(opt.contains("default: \"Ragnarok\""), "窗口标题补丁没有默认值");
 }
 
 /// 辅助：确认测试 exe 没被我们动过（补丁只能打在副本上）。

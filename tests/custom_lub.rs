@@ -71,8 +71,13 @@ const EXPECT: [(&str, &str, &[(usize, u32)]); 6] = [
 
 /// 测试用 exe 的路径（不存在就跳过测试）。
 fn test_exe() -> Option<PathBuf> {
-    let p = std::env::var("WARP_RS_TEST_EXE")
-        .unwrap_or_else(|_| "/home/neil/build/refs/2025-06-04_Ragexe_neil.exe".to_string());
+    let p = match std::env::var("WARP_RS_TEST_EXE") {
+        Ok(v) => v,
+        Err(_) => {
+            eprintln!("跳过：未设置 WARP_RS_TEST_EXE（指向一个真实的客户端 exe）");
+            return None;
+        }
+    };
     let p = PathBuf::from(p);
     if p.exists() {
         Some(p)

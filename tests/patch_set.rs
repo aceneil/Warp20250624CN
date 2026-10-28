@@ -7,7 +7,7 @@
 //! 3. 再打一遍全部 `already`（幂等）。
 //!
 //! 测试用的 exe 用环境变量 `WARP_RS_TEST_EXE` 指定，
-//! 缺省 `/home/neil/build/refs/2025-06-04_Ragexe_neil.exe`。
+//! 未设置就跳过（仓库里不放客户端 exe）。
 //! **文件不存在就跳过测试**（仓库里不放 15MB 的 exe）。
 
 use std::path::{Path, PathBuf};
@@ -33,8 +33,13 @@ const PATCH_IDS: [&str; 10] = [
 ];
 
 fn test_exe() -> Option<PathBuf> {
-    let p = std::env::var("WARP_RS_TEST_EXE")
-        .unwrap_or_else(|_| "/home/neil/build/refs/2025-06-04_Ragexe_neil.exe".to_string());
+    let p = match std::env::var("WARP_RS_TEST_EXE") {
+        Ok(v) => v,
+        Err(_) => {
+            eprintln!("跳过：未设置 WARP_RS_TEST_EXE（指向一个真实的客户端 exe）");
+            return None;
+        }
+    };
     let p = PathBuf::from(p);
     if p.exists() {
         Some(p)

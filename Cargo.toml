@@ -2,7 +2,7 @@
 name = "warp_rs"
 version = "0.1.0"
 edition = "2021"
-description = "RO 客户端补丁引擎（WARP 核心能力的 Rust 重写）"
+description = "Rust reimplementation of WARP's RO client patch engine"
 
 [dependencies]
 anyhow = "1"

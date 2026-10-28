@@ -1,0 +1,97 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # 需要真实客户端 exe 的用例会自动跳过（WARP_RS_TEST_EXE 未设置）
+      - run: cargo test --release --workspace
+      - run: cargo build --release --bin warp_rs
+      - name: smoke test (help output)
+        run: ./target/release/warp_rs --help
+
+  linux:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --bin warp_rs
+      - name: package
+        run: |
+          set -euo pipefail
+          strip target/release/warp_rs
+          mkdir -p dist
+          tar czf "dist/warp_rs-${GITHUB_REF_NAME}-linux-x86_64.tar.gz" -C target/release warp_rs
+          sha256sum dist/* > dist/SHA256SUMS-linux.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  windows:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-xwin
+      - name: build (MSVC target)
+        run: cargo xwin build --release --target x86_64-pc-windows-msvc --bin warp_rs
+      - name: package
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp target/x86_64-pc-windows-msvc/release/warp_rs.exe dist/warp_rs.exe
+          cd dist && zip -q "warp_rs-${GITHUB_REF_NAME}-windows-x86_64.zip" warp_rs.exe
+          sha256sum *.zip > SHA256SUMS-windows.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  release:
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: collect
+        run: |
+          mkdir -p out
+          cp artifacts/linux/* out/ 2>/dev/null || true
+          cp artifacts/windows/* out/ 2>/dev/null || true
+          ls -l out
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true
+          body: |
+            Prebuilt binaries for `warp_rs`.
+
+            | platform | asset |
+            |---|---|
+            | Linux x86-64 | `warp_rs-*-linux-x86_64.tar.gz` |
+            | Windows x86-64 | `warp_rs-*-windows-x86_64.zip` |
+
+            Build from source with `cargo build --release`.
+            Windows cross-compile from Linux: `cargo xwin build --release --target x86_64-pc-windows-msvc`.
+
+            No game client is bundled. Patch tables and the engine only — you supply the
+            executable you are licensed to modify.

@@ -1,0 +1,6 @@
+/target
+*.exe
+!docs/*.exe
+/tmp
+*.log
+.DS_Store

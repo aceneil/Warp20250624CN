@@ -17,17 +17,18 @@ path = "src/lib.rs"
 name = "warp-gui"
 path = "src/main.rs"
 
-# 说明：Tauri GUI 只在 Windows 目标下编译。
-#   * Windows：WebView2（Win10/11 自带），不依赖系统库，Linux 上可交叉编译
-#   * Linux ：编译产物仅为「命令行版」，用于验证核心逻辑（无需 webkit2gtk 开发包）
+# 构建说明（build-dependencies 不能被 feature 门控，所以 tauri-build 始终参与编译，
+# 但只有开 gui 时才真正执行 build()）
+# ----------
+# Tauri 由 `gui` feature 控制，默认关闭：
+#   * 不带 feature：只编译逻辑层 + 命令行占位壳，任何平台都不需要 webkit2gtk
+#     → 本地 `cargo test` / `cargo build` 秒过
+#   * `cargo build --features gui`：
+#       Windows：链 WebView2（系统自带），可从 Linux 用 cargo xwin 交叉编译
+#       Linux  ：需要 webkit2gtk-4.1 / libsoup-3 / gtk3 开发包（CI 里 apt 装齐）
+# 发版产物就是这么来的：CI 在 ubuntu-latest 与 windows-latest 各跑一次 --features gui。
 [build-dependencies]
-# tauri-build 只在编译期生成上下文/资源，始终以 host 编译
 tauri-build = { version = "2", features = [] }
-
-[target.'cfg(target_os = "windows")'.dependencies]
-tauri = { version = "2", features = [] }
-# 原生「打开文件」对话框（浏览…按钮）
-tauri-plugin-dialog = "2"
 
 [dependencies]
 # 补丁引擎（warp_rs）：本 crate 直接依赖它的库 API，不起子进程。
@@ -38,9 +39,13 @@ serde_json = "1"
 anyhow = "1"
 # md5（界面上显示客户端 exe 的 md5）
 md-5 = "0.11"
+# 桌面壳：只有开 gui feature 才拉进来
+tauri = { version = "2", features = [], optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
 
 [features]
 default = []
+gui = ["dep:tauri", "dep:tauri-plugin-dialog"]
 
 [profile.release]
 opt-level = "s"

@@ -14,7 +14,7 @@
 //! | `cmd_apply` | 应用：备份 → 打补丁 → 写 `<原名>_patched.exe` → 校验 |
 //! | `cmd_verify` | 校验一个已经打过补丁的 exe |
 
-#![cfg(target_os = "windows")]
+#![cfg(feature = "gui")]
 
 use std::path::{Path, PathBuf};
 

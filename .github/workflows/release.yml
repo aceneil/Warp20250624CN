@@ -1,5 +1,7 @@
 name: release
 
+# 只发桌面程序：Linux + Windows 的 warp-gui。
+# 命令行版 warp_rs 不再单独发资产（源码自取即可）。
 on:
   push:
     tags: ["v*"]
@@ -9,68 +11,53 @@ permissions:
   contents: write
 
 jobs:
+  # 逻辑层自检：不需要图形库，任何平台都能跑
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            tools/warp_gui -> tools/warp_gui/target
       # 去痕迹自检：私有项目名字 / 品牌词 / 内网地址不许出现在文件、提交信息里
       - name: scan for private strings
         run: bash scripts/check-no-private-strings.sh --history
-      # 需要真实客户端 exe 的用例会自动跳过（WARP_RS_TEST_EXE 未设置）
       - run: cargo test --release --workspace
-      - run: cargo build --release --bin warp_rs
-      - name: smoke test (help output)
-        run: ./target/release/warp_rs --help
+      - run: cargo test --release --manifest-path tools/warp_gui/Cargo.toml
 
-  linux:
+  gui-linux:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --release --bin warp_rs
-      - name: package
+        with:
+          workspaces: tools/warp_gui -> tools/warp_gui/target
+      - name: install webkit deps
         run: |
-          set -euo pipefail
-          strip target/release/warp_rs
-          mkdir -p dist
-          tar czf "dist/warp_rs-${GITHUB_REF_NAME}-linux-x86_64.tar.gz" -C target/release warp_rs
-          sha256sum dist/* > dist/SHA256SUMS-linux.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux
-          path: dist/*
-
-  windows:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-xwin
-      - name: build (MSVC target)
-        run: cargo xwin build --release --target x86_64-pc-windows-msvc --bin warp_rs
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf libsoup-3.0-dev
+      - name: build (Tauri GUI)
+        run: cargo build --release --features gui --manifest-path tools/warp_gui/Cargo.toml
       - name: package
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp target/x86_64-pc-windows-msvc/release/warp_rs.exe dist/warp_rs.exe
-          cd dist && zip -q "warp_rs-${GITHUB_REF_NAME}-windows-x86_64.zip" warp_rs.exe
-          sha256sum *.zip > SHA256SUMS-windows.txt
+          cp tools/warp_gui/target/release/warp-gui dist/
+          strip dist/warp-gui || true
+          tar -czf dist/warp-gui-linux-x86_64.tar.gz -C dist warp-gui
+          sha256sum dist/warp-gui-linux-x86_64.tar.gz > dist/SHA256SUMS-linux.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: windows
+          name: gui-linux
           path: dist/*
 
-  gui:
+  gui-windows:
     needs: test
     runs-on: windows-latest
     steps:
@@ -78,59 +65,48 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: tools/warp_gui
-      # 逻辑层单测（不碰 WebView，任何平台都能跑）
-      - name: test (逻辑层)
-        run: cargo test --manifest-path tools/warp_gui/Cargo.toml
-      # Tauri v2 图形程序（WebView2，Windows 自带）
+          workspaces: tools/warp_gui -> tools/warp_gui/target
       - name: build (Tauri GUI)
-        run: cargo build --release --bin warp-gui --manifest-path tools/warp_gui/Cargo.toml
-      - name: smoke test (退出码)
-        shell: cmd
-        run: |
-          tools\warp_gui\target\release\warp-gui.exe --version
-          if %ERRORLEVEL% neq 0 exit /b 1
+        run: cargo build --release --features gui --manifest-path tools/warp_gui/Cargo.toml
       - name: package
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp tools/warp_gui/target/release/warp-gui.exe dist/warp-gui.exe
+          cp tools/warp_gui/target/release/warp-gui.exe dist/
+          cd dist && zip -q warp-gui-windows-x86_64.zip warp-gui.exe
+          sha256sum warp-gui-windows-x86_64.zip > SHA256SUMS-windows.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: gui
+          name: gui-windows
           path: dist/*
 
   release:
-    needs: [linux, windows, gui]
+    needs: [gui-linux, gui-windows]
     # 只有打 tag 才发 Release（workflow_dispatch 在分支上跑只做构建烟测）
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts
-      - name: collect
-        run: |
-          mkdir -p out
-          cp artifacts/linux/* out/ 2>/dev/null || true
-          cp artifacts/windows/* out/ 2>/dev/null || true
-          cp artifacts/gui/* out/ 2>/dev/null || true
-          ls -l out
+          path: assets
+          merge-multiple: true
+      - name: list assets
+        run: ls -l assets
       - uses: softprops/action-gh-release@v2
         with:
-          files: out/*
-          generate_release_notes: true
+          files: |
+            assets/warp-gui-linux-x86_64.tar.gz
+            assets/warp-gui-windows-x86_64.zip
+            assets/SHA256SUMS-linux.txt
+            assets/SHA256SUMS-windows.txt
           body: |
-            Prebuilt binaries for `warp_rs`.
+            warp_gui —— RO 客户端补丁工具的桌面界面（Tauri v2）。
 
-            | platform | asset |
-            |---|---|
-            | Linux x86-64 | `warp_rs-*-linux-x86_64.tar.gz` |
-            | Windows x86-64 | `warp_rs-*-windows-x86_64.zip` |
-            | Windows x86-64 | `warp-gui.exe`（Tauri v2 图形界面） |
+            | 平台 | 文件 | 依赖 |
+            |---|---|---|
+            | Linux x86-64 | `warp-gui-linux-x86_64.tar.gz` | webkit2gtk-4.1 |
+            | Windows x86-64 | `warp-gui-windows-x86_64.zip` | Win10/11 自带 WebView2 |
 
-            Build from source with `cargo build --release`.
-            Windows cross-compile from Linux: `cargo xwin build --release --target x86_64-pc-windows-msvc`.
-
-            No game client is bundled. Patch tables and the engine only — you supply the
-            executable you are licensed to modify.
+            补丁表来自仓库里的 `patches/*.yml`；工具本身不含游戏客户端，
+            只修改你自己有权修改的 exe。

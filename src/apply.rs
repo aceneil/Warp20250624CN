@@ -16,6 +16,7 @@ use serde::Serialize;
 use crate::encode::{self, Encoding};
 use crate::engine::Engine;
 use crate::hex::{self, PatByte};
+use crate::patches::{self, Ctx, Outcome};
 use crate::table::{Mode, PatchSpec, PatchTable};
 
 /// 单条补丁的处理结果状态。
@@ -72,6 +73,9 @@ pub struct Entry {
     /// 中文说明。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub desc: Option<String>,
+    /// 英文原文。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub desc_en: Option<String>,
     /// 状态：applied / already / skipped / fail。
     pub status: String,
     /// 失败或跳过的原因。
@@ -159,6 +163,8 @@ struct Resolved {
     find: Vec<PatByte>,
     /// 替换字节（不含结束符）。
     repl: Vec<u8>,
+    /// 替换字节串（允许 `??` = 保留原字节）。
+    repl_pat: Vec<Option<u8>>,
     /// 替换后是否补 `00`。
     terminate: bool,
     /// 搜索范围。
@@ -198,6 +204,8 @@ pub fn apply(
         targets: Vec<Target>,
         /// 已经打好的落点（幂等判断用）。
         already_at: Option<usize>,
+        /// 自定义补丁的处理器名。
+        handler: Option<String>,
     }
 
     let mut plans: Vec<Plan> = Vec::with_capacity(table.patches.len());
@@ -208,6 +216,7 @@ pub fn apply(
             hits: 0,
             targets: Vec::new(),
             already_at: None,
+            handler: None,
         };
 
         let r = match res {
@@ -238,6 +247,14 @@ pub fn apply(
                 "编译时间 {} 不在日期区间内，跳过",
                 engine.pe.build_date_str()
             ));
+            plans.push(plan);
+            continue;
+        }
+
+        // 自定义补丁：放到写入阶段跑
+        if r.mode == Mode::Custom {
+            plan.handler = r.spec.handler.clone();
+            plan.reason = Some("自定义补丁（在写入阶段执行）".into());
             plans.push(plan);
             continue;
         }
@@ -422,6 +439,66 @@ pub fn apply(
         }
     }
 
+    // ---------------- 第五阶段：自定义补丁（Rust 处理器） ----------------
+    let mut backup: Option<(Vec<u8>, crate::pe::Pe)> = None;
+    for i in 0..plans.len() {
+        let Some(handler) = plans[i].handler.clone() else {
+            continue;
+        };
+        let spec = &table.patches[i];
+        // dry-run：先备份引擎，写完再还原
+        if opts.dry_run && backup.is_none() {
+            backup = Some((engine.data.clone(), engine.pe.clone()));
+        }
+        let (outcome, writes, marker) = {
+            let mut ctx = Ctx::new(&mut engine);
+            let outcome = patches::dispatch(&handler, &mut ctx, spec);
+            let writes = std::mem::take(&mut ctx.writes);
+            (outcome, writes, ctx.marker)
+        };
+        match outcome {
+            Ok(Outcome::Applied) => {
+                plans[i].hits = writes.len();
+                plans[i].targets = writes
+                    .into_iter()
+                    .map(|w| Target {
+                        offset: w.offset,
+                        va: engine.va_of_offset(w.offset),
+                        old: w.old,
+                        new: w.new,
+                    })
+                    .collect();
+                plans[i].status = Status::Applied;
+                plans[i].reason = Some(format!(
+                    "自定义补丁 {handler}：写入 {} 处",
+                    plans[i].targets.len()
+                ));
+            }
+            Ok(Outcome::Already) => {
+                plans[i].hits = writes.len();
+                plans[i].status = Status::Already;
+                plans[i].reason = Some("已经是目标状态（幂等）".into());
+                plans[i].already_at = marker;
+            }
+            Ok(Outcome::Fail(why)) => {
+                plans[i].status = Status::Fail;
+                plans[i].reason = Some(why);
+            }
+            Ok(Outcome::Skipped(why)) => {
+                plans[i].status = Status::Skipped;
+                plans[i].reason = Some(why);
+            }
+            Err(e) => {
+                plans[i].status = Status::Fail;
+                plans[i].reason = Some(format!("{e:#}"));
+            }
+        }
+    }
+    if let Some((data, pe)) = backup {
+        engine.data = data;
+        engine.pe = pe;
+    }
+
     // ---------------- 汇总报告 ----------------
     let mut entries = Vec::with_capacity(table.patches.len());
     let (mut n_applied, mut n_already, mut n_skipped, mut n_failed) = (0, 0, 0, 0);
@@ -494,6 +571,7 @@ pub fn apply(
         entries.push(Entry {
             id: spec.id.clone(),
             desc: spec.desc.clone(),
+            desc_en: spec.desc_en.clone(),
             status: plan.status.name().to_string(),
             reason: plan.reason.clone(),
             mode: spec.mode().map(|m| m.name().to_string()).unwrap_or_else(|_| "replace".into()),
@@ -545,16 +623,22 @@ pub fn apply(
 /// 解析一条补丁（找模式、替换内容、搜索范围）。
 fn resolve(engine: &Engine, spec: &PatchSpec) -> Result<Resolved> {
     let mode = spec.mode()?;
-    let find = hex::parse_pattern(&spec.find)
-        .with_context(|| format!("find 模式解析失败：{}", spec.find))?;
+    let find = if mode == Mode::Custom {
+        Vec::new()
+    } else {
+        hex::parse_pattern(&spec.find)
+            .with_context(|| format!("find 模式解析失败：{}", spec.find))?
+    };
     let range = engine.range_of(spec.section.as_deref())?;
 
     let mut repl: Vec<u8> = Vec::new();
+    let mut repl_pat: Vec<Option<u8>> = Vec::new();
     let mut terminate = spec.terminate.unwrap_or(false);
     match mode {
         Mode::Replace => {
             if let Some(hexstr) = &spec.replace {
-                repl = hex::parse_bytes(hexstr)
+                // 允许 `??` 通配：通配位表示「保留原字节」
+                repl_pat = hex::parse_replace(hexstr)
                     .with_context(|| format!("replace 字节串解析失败：{hexstr}"))?;
             } else if let Some(text) = &spec.text {
                 let enc = match &spec.encoding {
@@ -581,6 +665,12 @@ fn resolve(engine: &Engine, spec: &PatchSpec) -> Result<Resolved> {
             }
             terminate = false;
         }
+        Mode::Custom => {
+            if spec.handler.is_none() {
+                bail!("补丁 {} 是 custom 模式，但没有 handler", spec.id);
+            }
+            terminate = false;
+        }
     }
 
     Ok(Resolved {
@@ -588,6 +678,7 @@ fn resolve(engine: &Engine, spec: &PatchSpec) -> Result<Resolved> {
         mode,
         find,
         repl,
+        repl_pat,
         terminate,
         range,
     })
@@ -598,10 +689,17 @@ fn compute_target(engine: &Engine, r: &Resolved, off: usize) -> Result<Target> {
     let va = engine.va_of_offset(off);
     let new = match r.mode {
         Mode::Replace => {
+            let mut buf = if r.repl_pat.is_empty() {
+                r.repl.clone()
+            } else {
+                // `??` 的位置保留原字节
+                let end = (off + r.repl_pat.len()).min(engine.data.len());
+                hex::resolve_replace(&r.repl_pat, &engine.data[off..end])?
+            };
             // 铁律：替换字节数 ≤ find 字节数（原地覆写）；
             // 例外：允许借用紧跟在匹配之后的连续 0x00 填充 —— 只覆盖 NUL，
             // 不碰任何非零数据，也不会跨段。
-            if r.repl.len() > r.find.len() {
+            if buf.len() > r.find.len() {
                 let mut pad = 0usize;
                 let mut i = off + r.find.len();
                 while i < engine.data.len() && engine.data[i] == 0x00 {
@@ -609,16 +707,15 @@ fn compute_target(engine: &Engine, r: &Resolved, off: usize) -> Result<Target> {
                     i += 1;
                 }
                 ensure!(
-                    r.repl.len() <= r.find.len() + pad,
+                    buf.len() <= r.find.len() + pad,
                     "替换字节数 {} 超过 find 的 {} 字节（尾部可用 NUL 填充 {} 字节），跳过",
-                    r.repl.len(),
+                    buf.len(),
                     r.find.len(),
                     pad
                 );
                 // 借用填充时，落地范围必须仍在同一段内
-                engine.check_write(off, r.repl.len())?;
+                engine.check_write(off, buf.len())?;
             }
-            let mut buf = r.repl.clone();
             if r.terminate {
                 buf.push(0x00);
                 if buf.len() > r.find.len() {
@@ -633,6 +730,7 @@ fn compute_target(engine: &Engine, r: &Resolved, off: usize) -> Result<Target> {
             buf
         }
         Mode::Nop => r.repl.clone(),
+        Mode::Custom => unreachable!("custom 模式不走这里"),
         Mode::Jmp => {
             let target = r.spec.target.unwrap() as u32;
             let from = va.context("落点不在任何段里，无法计算跳转")?;
@@ -667,6 +765,27 @@ fn expected_bytes(r: &Resolved) -> Vec<u8> {
 
 /// 幂等兜底：在范围里找替换后的字节，找到就返回 (偏移, 应有的字节)。
 fn already_fallback(engine: &Engine, r: &Resolved) -> Option<(usize, Vec<u8>)> {
+    if !r.repl_pat.is_empty() {
+        // 带通配的替换：把固定字节当特征去搜（通配位还是通配）
+        let pat: Vec<PatByte> = r
+            .repl_pat
+            .iter()
+            .map(|o| match o {
+                Some(v) => PatByte {
+                    value: *v,
+                    mask: 0xFF,
+                },
+                None => PatByte {
+                    value: 0,
+                    mask: 0x00,
+                },
+            })
+            .collect();
+        let hits = engine.find_pattern(&pat, r.range);
+        let off = *hits.first()?;
+        let end = (off + r.repl_pat.len()).min(engine.data.len());
+        return Some((off, engine.data[off..end].to_vec()));
+    }
     let off = find_replacement(engine, &r.repl, r.terminate, r.range)?;
     Some((off, expected_bytes(r)))
 }
@@ -789,8 +908,62 @@ pub fn verify(data: Vec<u8>, table: &PatchTable, original: Option<&[u8]>) -> Res
         }
 
         let mode = spec.mode().unwrap_or(Mode::Replace);
+
+        // 自定义补丁：用处理器自己判断「是不是已经打上了」
+        if mode == Mode::Custom {
+            let Some(handler) = spec.handler.clone() else {
+                entry.reason = Some("custom 模式但没有 handler".into());
+                failed += 1;
+                entries.push(entry);
+                continue;
+            };
+            let mut probe = Engine::new(engine.data.clone())?;
+            let outcome = {
+                let mut ctx = Ctx::new(&mut probe);
+                ctx.check_only = true;
+                patches::dispatch(&handler, &mut ctx, spec)
+            };
+            match outcome {
+                Ok(Outcome::Already) => {
+                    entry.status = "ok".into();
+                    entry.reason = Some("补丁已生效".into());
+                    passed += 1;
+                }
+                Ok(Outcome::Applied) => {
+                    entry.status = "fail".into();
+                    entry.reason = Some("补丁还没打上（处理器认为可以写入）".into());
+                    failed += 1;
+                }
+                Ok(Outcome::Fail(why)) => {
+                    entry.status = "fail".into();
+                    entry.reason = Some(why);
+                    failed += 1;
+                }
+                Ok(Outcome::Skipped(why)) => {
+                    entry.status = "skipped".into();
+                    entry.reason = Some(why);
+                    skipped += 1;
+                }
+                Err(e) => {
+                    entry.status = "fail".into();
+                    entry.reason = Some(format!("{e:#}"));
+                    failed += 1;
+                }
+            }
+            entries.push(entry);
+            continue;
+        }
+
+        // replace 里允许 `??`（= 保留原字节）
+        let repl_pat: Vec<Option<u8>> = if let Some(h) = &spec.replace {
+            hex::parse_replace(h).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let repl: Vec<u8> = if mode == Mode::Nop {
             vec![0x90u8; spec.nop_len.unwrap_or_else(|| hex::parse_pattern(&spec.find).map(|p| p.len()).unwrap_or(1))]
+        } else if !repl_pat.is_empty() {
+            Vec::new()
         } else if let Some(h) = &spec.replace {
             hex::parse_bytes(h).unwrap_or_default()
         } else if let Some(t) = &spec.text {
@@ -839,6 +1012,13 @@ pub fn verify(data: Vec<u8>, table: &PatchTable, original: Option<&[u8]>) -> Res
                 failed += 1;
             } else {
                 let off = selected[0];
+                // 有通配的替换：期望值 = 固定字节 + 原文件里那些位置的字节
+                let expected = if !repl_pat.is_empty() {
+                    let oend = (off + repl_pat.len()).min(orig.data.len());
+                    hex::resolve_replace(&repl_pat, &orig.data[off..oend]).unwrap_or_default()
+                } else {
+                    expected.clone()
+                };
                 let actual = engine.data.get(off..off + expected.len()).unwrap_or(&[]).to_vec();
                 entry.offset = Some(off);
                 entry.va = engine.va_of_offset(off);
@@ -858,7 +1038,23 @@ pub fn verify(data: Vec<u8>, table: &PatchTable, original: Option<&[u8]>) -> Res
         }
 
         // 没有原始文件 → 看替换内容是否已经出现在范围里
-        let found = if expected.is_empty() {
+        let found = if !repl_pat.is_empty() {
+            // 带通配的替换：把固定字节当特征去搜
+            let pat: Vec<PatByte> = repl_pat
+                .iter()
+                .map(|o| match o {
+                    Some(v) => PatByte {
+                        value: *v,
+                        mask: 0xFF,
+                    },
+                    None => PatByte {
+                        value: 0,
+                        mask: 0x00,
+                    },
+                })
+                .collect();
+            engine.find_pattern(&pat, range).into_iter().next()
+        } else if expected.is_empty() {
             None
         } else {
             engine.find_text(&expected, range).into_iter().next()

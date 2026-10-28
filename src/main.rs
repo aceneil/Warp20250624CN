@@ -11,6 +11,7 @@ mod apply;
 mod encode;
 mod engine;
 mod hex;
+mod patches;
 mod pe;
 mod table;
 

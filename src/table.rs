@@ -57,6 +57,8 @@ pub enum Mode {
     Nop,
     /// 写一条相对跳转。
     Jmp,
+    /// 走 Rust 侧的自定义处理器（`handler:` 字段指定处理器名）。
+    Custom,
 }
 
 impl Mode {
@@ -65,6 +67,7 @@ impl Mode {
             "replace" | "patch" | "set" => Ok(Mode::Replace),
             "nop" | "nops" => Ok(Mode::Nop),
             "jmp" | "jump" => Ok(Mode::Jmp),
+            "custom" | "handler" | "hook" => Ok(Mode::Custom),
             other => bail!("未知补丁模式：{other}（支持 replace / nop / jmp）"),
         }
     }
@@ -74,6 +77,7 @@ impl Mode {
             Mode::Replace => "replace",
             Mode::Nop => "nop",
             Mode::Jmp => "jmp",
+            Mode::Custom => "custom",
         }
     }
 }
@@ -92,10 +96,14 @@ pub struct DateRange {
 pub struct PatchSpec {
     /// 唯一标识。
     pub id: String,
-    /// 中文说明。
+    /// 中文说明（界面显示：「中文（English）」）。
     #[serde(default)]
     pub desc: Option<String>,
-    /// 搜索模式（hex，支持 `??` 通配）。
+    /// 英文原文。
+    #[serde(default)]
+    pub desc_en: Option<String>,
+    /// 搜索模式（hex，支持 `??` 通配）。`mode: custom` 时可以省略。
+    #[serde(default)]
     pub find: String,
     /// 替换字节（hex）。
     #[serde(default)]
@@ -145,6 +153,9 @@ pub struct PatchSpec {
     /// 备注 / 原因。
     #[serde(default)]
     pub note: Option<String>,
+    /// `mode: custom` 时指定用哪个 Rust 处理器（见 `src/patches/`）。
+    #[serde(default)]
+    pub handler: Option<String>,
 }
 
 impl PatchSpec {

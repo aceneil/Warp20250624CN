@@ -1,0 +1,146 @@
+# warp_rs 基础补丁表 —— 10 条 WARP 补丁
+#
+# 字段说明：
+#   id       唯一标识
+#   desc     说明（「中文（English）」，启动器界面直接显示这一行）
+#   desc_en  英文原文
+#   find     搜索特征串（hex，?? 为通配；replace 里写 ?? 表示「保留原字节」）
+#   replace  替换字节（hex）
+#   section  限定在哪个段里搜
+#   expect   期望命中次数（不符即失败）
+#   mode     replace | nop | jmp | custom
+#   handler  mode: custom 时用哪个 Rust 处理器（见 src/patches/）
+#   note     备注（custom 补丁的特征码说明）
+#   priority 优先级大的先打
+#
+# 目标客户端：2025-06-04 Ragexe（PE32，未加壳，编译时间 20250529，FullVer 14.29）
+version: 1
+patches:
+  # ---------------------------------------------------------------- 表驱动
+  - id: zoom-max
+    desc: "最大化缩放范围（Increase Zoom Out (to Max)）"
+    desc_en: "Increase Zoom Out (to Max)"
+    # FAR_DIST = 480.0f（IEEE-754: 00 00 F0 43），改成 1184.0f（00 00 99 44）
+    find: "00 00 F0 43 00 00"
+    replace: "00 00 99 44 00 00"
+    section: .rdata
+    expect: 1
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+
+  - id: always-ascii
+    desc: "全部使用 ASCII（Use Ascii on All）"
+    desc_en: "Use Ascii on All"
+    # CSession::IsOnlyEnglish：cmp byte ptr [reg+reg], 0 / jl _skip / inc reg
+    # 把那个 jl（7C xx）NOP 掉，客户端就总是用 ASCII。
+    # replace 里的 ?? 表示「保留原字节」。
+    find: "80 3C ?? 00 7C ?? 4?"
+    replace: "80 3C ?? 00 90 90 4?"
+    section: .text
+    expect: 1
+    mode: replace
+    dates: { start: 20100000, end: 20991231 }
+
+  # ---------------------------------------------------------------- 自定义
+  - id: borderless-fsw
+    desc: "启用无边框全屏（Enable Borderless full screen）"
+    desc_en: "Enable Borderless full screen"
+    mode: custom
+    handler: borderless-fsw
+    section: .text
+    expect: 2
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      特征：导入表里的 CreateWindowExA（IAT 槽 FF 15 <slot>）+ 调用之后
+      「mov dword ptr [全局], eax」（A3 xx xx xx xx）的那一个 —— 也就是主窗口的创建点。
+      注入代码放在 .text 段后面的文件空洞里。
+
+  - id: cutin-esc
+    desc: "允许用 ESC 关闭 cutin 窗口（Close cutin on Esc key）"
+    desc_en: "Close cutin on Esc key"
+    mode: custom
+    handler: cutin-esc
+    section: .text
+    expect: 2
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      特征：UIIllustWnd::SendMsg 的 case 6（0F 84 .. .. 00 00 83 F8 22 0F 84 .. .. 00 00 83 F8 4E）、
+      UIWindowMgr::ProcessPushButton 里的 ESC 检查（5? B9 .. .. .. 0? E8 .. .. .. .. 8B C8 85 C9 0F 84 .. .. 00 00）、
+      VC14.29 的默认分支（83 F? FF 0F 85 .. .. FF FF 83 3D .. .. .. .. 02 0F 85 .. .. FF FF 6A 00）。
+
+  - id: map-quality
+    desc: "提高地图画质（Increase map quality）"
+    desc_en: "Increase map quality"
+    mode: custom
+    handler: map-quality
+    section: .text
+    expect: 1
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      特征：CTexMgr::CreateTexture 的调用点
+      （B9 .. .. .. .. 50 68 00 01 00 00 68 00 01 00 00 E8），把它前面那个
+      push 1（pf 参数）改成 push 4（32 位色）。
+
+  - id: no-gravity-ads
+    desc: "去除 Gravity 广告（Remove gravity ads）"
+    desc_en: "Remove gravity ads"
+    mode: custom
+    handler: no-gravity-ads
+    section: .rdata
+    expect: 3
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      特征：贴图名 \T_중력성인.tga / \T_테입%d.tga / \T_GameGrade.tga，
+      把开头的 \T_ 里的 T 清零。
+
+  - id: no-kro-site
+    desc: "禁止跳转 kRO 官网（Disable kRO site launch）"
+    desc_en: "Disable kRO site launch"
+    mode: custom
+    handler: no-kro-site
+    section: .rdata
+    expect: 7
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      特征：ro.gnjoy.com / http://ro.gnjoy.com / http://www.ragnarok.co.in/index.php /
+      https://iro.ragnarokonline.com/... / http://t.kunlun.com/... / http://www.hangame.com /
+      http://ragnarok.co.kr —— 把每个 URL 的第一个字节清零。
+
+  - id: official-palette
+    desc: "使用官方时装配色（Use official cloth palettes）"
+    desc_en: "Use official cloth palettes"
+    mode: custom
+    handler: official-palette
+    section: .text
+    expect: 1
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      特征：配色前缀「骑士」（CP949 C5 A9 B7 E7）+ 00，以及
+      「mov dword ptr [reg+38h], <前缀>」（C7 4? 38 .. .. .. ..），
+      再往前 0x20 字节里的近距 JNE（0F 85 .. .. 00 00）就是被 NOP 的那个跳转。
+
+  - id: load-kr-extsettings
+    desc: "总是加载韩服 ExternalSettings 配置（Always load korea ExternalSettings lua file）"
+    desc_en: "Always load korea ExternalSettings lua file"
+    mode: custom
+    handler: load-kr-extsettings
+    section: .text
+    expect: 23
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      特征：「Lua Files\service_korea\ExternalSettings_kr」以及 .text 里所有
+      指向「Lua Files\service_*\ExternalSettings*」的 mov 立即数（都改指韩服那份）。
+
+  - id: no-gm-sprite
+    desc: "关闭 GM 精灵（Disable GM sprite）"
+    desc_en: "Disable GM sprite"
+    mode: custom
+    handler: no-gm-sprite
+    section: .text
+    expect: 2
+    dates: { start: 20100000, end: 20991231 }
+    note: >-
+      特征：VC14.29 的 GM ID 分发
+      （83 E8 0C 74 .. 2D A1 0F 00 00 74 .. 83 E8 16 74 .. EB .. 2D E1 0F 00 00 74 .. 83 E8 24 74 .. 2D 99 00 00 00），
+      后面两个「push eax; push 5; call ..」就是 CPc::SetActNameList / SetSprNameList 的调用点；
+      函数里的「call IsNameYellow; add esp,4; test al,al; jz ..」的 jz 改成 jmp。

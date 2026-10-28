@@ -60,6 +60,49 @@ pub fn parse_bytes(s: &str) -> Result<Vec<u8>> {
     Ok(pat.iter().map(|p| p.value).collect())
 }
 
+/// 解析「替换字节串」：允许通配。
+///
+/// 和 [`parse_bytes`] 的区别：`None` 表示「这一位保留原字节」。
+/// 这样 `find: "80 3C ?? 00 7C ?? 40"` 配
+/// `replace: "80 3C ?? 00 90 90 40"` 就能只改想改的那几个字节。
+pub fn parse_replace(s: &str) -> Result<Vec<Option<u8>>> {
+    let mut out = Vec::new();
+    for tok in s.split_whitespace() {
+        if tok.is_empty() {
+            continue;
+        }
+        if tok.len() % 2 != 0 {
+            bail!("非法十六进制片段（长度必须是偶数）：{tok}");
+        }
+        for i in (0..tok.len()).step_by(2) {
+            let b = parse_byte(&tok[i..i + 2])?;
+            out.push(if b.is_wildcard() { None } else { Some(b.value) });
+        }
+    }
+    if out.is_empty() {
+        bail!("空的替换字节串");
+    }
+    Ok(out)
+}
+
+/// 把「替换字节串」里的通配位填成原字节，得到实际要写的字节。
+pub fn resolve_replace(spec: &[Option<u8>], original: &[u8]) -> Result<Vec<u8>> {
+    let mut out = Vec::with_capacity(spec.len());
+    for (i, s) in spec.iter().enumerate() {
+        match s {
+            Some(v) => out.push(*v),
+            None => {
+                let o = original
+                    .get(i)
+                    .copied()
+                    .ok_or_else(|| anyhow::anyhow!("替换字节串比原串长，没法保留第 {i} 位的原字节"));
+                out.push(o?);
+            }
+        }
+    }
+    Ok(out)
+}
+
 fn parse_byte(tok: &str) -> Result<PatByte> {
     let b = tok.as_bytes();
     if b.len() != 2 {

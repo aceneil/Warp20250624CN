@@ -31,6 +31,8 @@ pub struct Pe {
     pub build_date: u32,
     pub is_64: bool,
     pub sections: Vec<Section>,
+    /// 段表在文件里的偏移（改 SizeOfRawData 时要用）。
+    pub section_table_offset: usize,
 }
 
 impl Pe {
@@ -88,6 +90,7 @@ impl Pe {
             build_date,
             is_64,
             sections,
+            section_table_offset: sec_start,
         })
     }
 
@@ -157,6 +160,79 @@ impl Pe {
         let (y, m, d) = civil_from_days(days as i64);
         format!("{y:04}-{m:02}-{d:02}")
     }
+}
+
+/// 在导入表里找「某个 DLL 的某个函数」的 IAT 槽地址（完整 VA）。
+///
+/// * `dll` / `func` 大小写不敏感。
+/// * 找不到返回 `None`。
+///
+/// IAT 槽就是 `FF 15 <slot>` 这种间接调用指令里用的那个地址。
+pub fn find_import_iat(data: &[u8], pe: &Pe, dll: &str, func: &str) -> Option<u32> {
+    // 数据目录在可选头里的偏移（PE32 是 +96，PE32+ 是 +112）
+    let e_lfanew = u32::from_le_bytes(data[0x3C..0x40].try_into().unwrap()) as usize;
+    let coff = e_lfanew + 4;
+    let opt = coff + 20;
+    let dd_off = if pe.is_64 { opt + 112 } else { opt + 96 };
+    let imp_rva = u32::from_le_bytes(data[dd_off + 8..dd_off + 12].try_into().unwrap());
+    if imp_rva == 0 {
+        return None;
+    }
+
+    let rva_to_off = |rva: u32| -> Option<usize> {
+        for s in &pe.sections {
+            let end = s.va.saturating_add(s.vsize.max(s.raw_size));
+            if rva >= s.va && rva < end {
+                let d = (rva - s.va) as usize;
+                if d < s.raw_size as usize {
+                    return Some((s.raw_ptr + d as u32) as usize);
+                }
+            }
+        }
+        None
+    };
+    let cstr = |off: usize| -> String {
+        let end = data[off..].iter().position(|b| *b == 0).map(|p| off + p).unwrap_or(off);
+        String::from_utf8_lossy(&data[off..end]).to_string()
+    };
+
+    let mut desc = rva_to_off(imp_rva)?;
+    loop {
+        if desc + 20 > data.len() {
+            return None;
+        }
+        let oft = u32::from_le_bytes(data[desc..desc + 4].try_into().unwrap());
+        let name_rva = u32::from_le_bytes(data[desc + 12..desc + 16].try_into().unwrap());
+        let ft = u32::from_le_bytes(data[desc + 16..desc + 20].try_into().unwrap());
+        if oft == 0 && name_rva == 0 && ft == 0 {
+            break;
+        }
+        let dll_name = cstr(rva_to_off(name_rva)?);
+        if dll_name.eq_ignore_ascii_case(dll) {
+            // 优先用 OriginalFirstThunk（导入名表），没有就用 FirstThunk
+            let thunk_rva = if oft != 0 { oft } else { ft };
+            let mut t = rva_to_off(thunk_rva)?;
+            let mut i = 0usize;
+            loop {
+                let v = u32::from_le_bytes(data[t..t + 4].try_into().unwrap());
+                if v == 0 {
+                    break;
+                }
+                if v & 0x8000_0000 == 0 {
+                    let noff = rva_to_off(v)?;
+                    let fname = cstr(noff + 2);
+                    if fname.eq_ignore_ascii_case(func) {
+                        return Some(pe.image_base + ft + (i as u32) * 4);
+                    }
+                }
+                t += 4;
+                i += 1;
+            }
+            return None;
+        }
+        desc += 20;
+    }
+    None
 }
 
 /// Howard Hinnant 的 civil_from_days（对外版，给日期过滤用）。

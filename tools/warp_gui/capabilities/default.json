@@ -1,0 +1,11 @@
+{
+  "identifier": "default",
+  "description": "默认权限：核心事件监听（拖放文件）+ 窗口控制",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-close"
+  ]
+}

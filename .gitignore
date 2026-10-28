@@ -1,4 +1,6 @@
 /target
+# 工具子工程各自独立的 target 目录
+/tools/*/target
 *.exe
 !docs/*.exe
 /tmp

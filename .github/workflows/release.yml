@@ -67,8 +67,38 @@ jobs:
           name: windows
           path: dist/*
 
+  gui:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/warp_gui
+      # 逻辑层单测（不碰 WebView，任何平台都能跑）
+      - name: test (逻辑层)
+        run: cargo test --manifest-path tools/warp_gui/Cargo.toml
+      # Tauri v2 图形程序（WebView2，Windows 自带）
+      - name: build (Tauri GUI)
+        run: cargo build --release --bin warp-gui --manifest-path tools/warp_gui/Cargo.toml
+      - name: smoke test (退出码)
+        shell: cmd
+        run: |
+          tools\warp_gui\target\release\warp-gui.exe --version
+          if %ERRORLEVEL% neq 0 exit /b 1
+      - name: package
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp tools/warp_gui/target/release/warp-gui.exe dist/warp-gui.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui
+          path: dist/*
+
   release:
-    needs: [linux, windows]
+    needs: [linux, windows, gui]
     # 只有打 tag 才发 Release（workflow_dispatch 在分支上跑只做构建烟测）
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
@@ -81,6 +111,7 @@ jobs:
           mkdir -p out
           cp artifacts/linux/* out/ 2>/dev/null || true
           cp artifacts/windows/* out/ 2>/dev/null || true
+          cp artifacts/gui/* out/ 2>/dev/null || true
           ls -l out
       - uses: softprops/action-gh-release@v2
         with:
@@ -93,6 +124,7 @@ jobs:
             |---|---|
             | Linux x86-64 | `warp_rs-*-linux-x86_64.tar.gz` |
             | Windows x86-64 | `warp_rs-*-windows-x86_64.zip` |
+            | Windows x86-64 | `warp-gui.exe`（Tauri v2 图形界面） |
 
             Build from source with `cargo build --release`.
             Windows cross-compile from Linux: `cargo xwin build --release --target x86_64-pc-windows-msvc`.

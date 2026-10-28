@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>warp_rs 补丁工具</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">W</span>
+        <div>
+          <div class="title">warp_rs 补丁工具</div>
+          <div class="sub" id="patchesDir">补丁表目录：读取中…</div>
+        </div>
+      </div>
+      <div class="badge" id="badgeSummary">共 0 条 / 已选 0 条</div>
+    </header>
+
+    <!-- ============================ ① 选择目标 ============================ -->
+    <section class="card">
+      <div class="card-title">① 选择目标</div>
+      <div class="row">
+        <label class="field-label" for="exePath">客户端 exe</label>
+        <input id="exePath" class="path-input" type="text" spellcheck="false"
+               placeholder="把 Ragexe.exe 拖到窗口里，或点「浏览…」" />
+        <button id="btnBrowse" class="btn">浏览…</button>
+        <button id="btnClearExe" class="btn ghost">清空</button>
+      </div>
+      <div class="meta" id="exeMeta">尚未选择客户端 exe。</div>
+    </section>
+
+    <!-- ============================ ② 选择补丁 ============================ -->
+    <section class="card">
+      <div class="card-title">② 选择补丁</div>
+      <div class="row">
+        <label class="field-label" for="selTable">补丁表</label>
+        <select id="selTable" class="select"></select>
+        <span class="hint" id="tableHint"></span>
+        <div class="spacer"></div>
+        <button id="btnAll" class="btn mini">全选</button>
+        <button id="btnNone" class="btn mini">全不选</button>
+      </div>
+      <div class="summary" id="summary">共 0 条，已选 0 条，其中 0 条在当前 exe 上找不到（会跳过）</div>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead>
+            <tr>
+              <th class="col-check"><input type="checkbox" id="chkAll" title="全选 / 全不选" /></th>
+              <th class="col-id">id</th>
+              <th class="col-desc">说明</th>
+              <th class="col-mode">模式</th>
+              <th class="col-off">偏移</th>
+              <th class="col-avail">是否可用</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr class="empty"><td colspan="6">正在读取补丁表…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================ ③ 执行 ============================ -->
+    <section class="card grow">
+      <div class="card-title">③ 执行</div>
+      <div class="row">
+        <button id="btnPreview" class="btn">预览</button>
+        <button id="btnApply" class="btn primary">应用</button>
+        <button id="btnVerify" class="btn">校验</button>
+        <div class="spacer"></div>
+        <button id="btnClearLog" class="btn mini">清空日志</button>
+      </div>
+      <pre class="log" id="log"></pre>
+    </section>
+  </div>
+
+  <!-- 一行中文错误说明 -->
+  <div class="toast" id="toast" hidden></div>
+  <!-- 拖放提示 -->
+  <div class="drop-hint" id="dropHint">松开鼠标即可选中这个文件</div>
+
+  <script src="app.js"></script>
+</body>
+</html>

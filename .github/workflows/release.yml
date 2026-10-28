@@ -15,6 +15,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # 去痕迹自检：私有项目名字 / 品牌词 / 内网地址不许出现在文件、提交信息里
+      - name: scan for private strings
+        run: bash scripts/check-no-private-strings.sh --history
       # 需要真实客户端 exe 的用例会自动跳过（WARP_RS_TEST_EXE 未设置）
       - run: cargo test --release --workspace
       - run: cargo build --release --bin warp_rs

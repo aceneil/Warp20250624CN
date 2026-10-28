@@ -8,15 +8,27 @@ description = "RO 客户端补丁引擎（WARP 核心能力的 Rust 重写）"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
-clap = { version = "4", features = ["derive"] }
 serde_json = "1"
 # 编码转换（GBK / CP949 / UTF-8）。离线构建：crate 已在本地 cargo 缓存里。
 encoding_rs = "0.8"
+# clap 只有命令行版用得上；启动器把本 crate 当库依赖时关掉这个 feature，
+# 省得把 clap 拖进启动器的二进制里。
+clap = { version = "4", features = ["derive"], optional = true }
+
+[features]
+default = ["cli"]
+# 命令行版（src/main.rs）需要 clap
+cli = ["dep:clap"]
 
 [dev-dependencies]
 # 集成测试里要自己把中文转成 GBK 字节（离线构建：和主依赖同一个 crate）
 encoding_rs = "0.8"
 
+[lib]
+name = "warp_rs"
+path = "src/lib.rs"
+
 [[bin]]
 name = "warp_rs"
 path = "src/main.rs"
+required-features = ["cli"]

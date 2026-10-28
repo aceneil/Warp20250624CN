@@ -1,0 +1,893 @@
+# WARP 等价补丁表（逐字节复现某个已验证可启动的 WARP 产物）
+#
+# 用途：当语义化补丁难以完全复现 WARP 的行为时，用「固定偏移 + 原字节校验」
+# 把 WARP 实际写入的每一段原样落下来，产物与 WARP 输出逐字节相同。
+#
+# 生成方式：diff(pristine, warp_output) → 每个差异块一条 offset 补丁。
+# 校验：apply 后 md5 必须等于参照产物的 md5。
+meta:
+  encoding: gbk
+version: 1
+patches:
+  - id: parity-0001
+    desc: "WARP 等价补丁 1（偏移 0x0000018D）"
+    desc_en: "WARP parity patch 1 @0x0000018D"
+    mode: offset
+    offset: "0x0000018D"
+    verify: "FA B9"
+    replace: "00 00"
+  - id: parity-0002
+    desc: "WARP 等价补丁 2（偏移 0x000001C8）"
+    desc_en: "WARP parity patch 2 @0x000001C8"
+    mode: offset
+    offset: "0x000001C8"
+    verify: "29 1F 99"
+    replace: "00 00 00"
+  - id: parity-0003
+    desc: "WARP 等价补丁 3（偏移 0x00143C78）"
+    desc_en: "WARP parity patch 3 @0x00143C78"
+    mode: offset
+    offset: "0x00143C78"
+    verify: "75"
+    replace: "EB"
+  - id: parity-0004
+    desc: "WARP 等价补丁 4（偏移 0x001B899A）"
+    desc_en: "WARP parity patch 4 @0x001B899A"
+    mode: offset
+    offset: "0x001B899A"
+    verify: "A2 25 B2 5D"
+    replace: "E9 B1 4D E3"
+  - id: parity-0005
+    desc: "WARP 等价补丁 5（偏移 0x0021F935）"
+    desc_en: "WARP parity patch 5 @0x0021F935"
+    mode: offset
+    offset: "0x0021F935"
+    verify: "4C 78 FC 00"
+    replace: "21 D8 3E 02"
+  - id: parity-0006
+    desc: "WARP 等价补丁 6（偏移 0x00237D76）"
+    desc_en: "WARP parity patch 6 @0x00237D76"
+    mode: offset
+    offset: "0x00237D76"
+    verify: "98 53 FE 00"
+    replace: "90 D8 3E 02"
+  - id: parity-0007
+    desc: "WARP 等价补丁 7（偏移 0x00237D84）"
+    desc_en: "WARP parity patch 7 @0x00237D84"
+    mode: offset
+    offset: "0x00237D84"
+    verify: "BC 53 FE 00"
+    replace: "A9 D8 3E 02"
+  - id: parity-0008
+    desc: "WARP 等价补丁 8（偏移 0x0028E24B）"
+    desc_en: "WARP parity patch 8 @0x0028E24B"
+    mode: offset
+    offset: "0x0028E24B"
+    verify: "2C A0 FE 00"
+    replace: "3D D8 3E 02"
+  - id: parity-0009
+    desc: "WARP 等价补丁 9（偏移 0x00332726）"
+    desc_en: "WARP parity patch 9 @0x00332726"
+    mode: offset
+    offset: "0x00332726"
+    verify: "C7 45 FC FF FF FF FF"
+    replace: "C6 41 04 01 0F 1F 00"
+  - id: parity-0010
+    desc: "WARP 等价补丁 10（偏移 0x00333280）"
+    desc_en: "WARP parity patch 10 @0x00333280"
+    mode: offset
+    offset: "0x00333280"
+    verify: "55 8B EC 6A"
+    replace: "33 C0 40 C3"
+  - id: parity-0011
+    desc: "WARP 等价补丁 11（偏移 0x003722F7）"
+    desc_en: "WARP parity patch 11 @0x003722F7"
+    mode: offset
+    offset: "0x003722F7"
+    verify: "1C 8B FF 00"
+    replace: "CC D8 3E 02"
+  - id: parity-0012
+    desc: "WARP 等价补丁 12（偏移 0x0039F3E9）"
+    desc_en: "WARP parity patch 12 @0x0039F3E9"
+    mode: offset
+    offset: "0x0039F3E9"
+    verify: "93 EE 26 00"
+    replace: "13 E4 C4 01"
+  - id: parity-0013
+    desc: "WARP 等价补丁 13（偏移 0x00483D44）"
+    desc_en: "WARP parity patch 13 @0x00483D44"
+    mode: offset
+    offset: "0x00483D44"
+    verify: "08"
+    replace: "00"
+  - id: parity-0014
+    desc: "WARP 等价补丁 14（偏移 0x006221D2）"
+    desc_en: "WARP parity patch 14 @0x006221D2"
+    mode: offset
+    offset: "0x006221D2"
+    verify: "C8"
+    replace: "C7"
+  - id: parity-0015
+    desc: "WARP 等价补丁 15（偏移 0x0062F7B7）"
+    desc_en: "WARP parity patch 15 @0x0062F7B7"
+    mode: offset
+    offset: "0x0062F7B7"
+    verify: "00"
+    replace: "01"
+  - id: parity-0016
+    desc: "WARP 等价补丁 16（偏移 0x0063C42B）"
+    desc_en: "WARP parity patch 16 @0x0063C42B"
+    mode: offset
+    offset: "0x0063C42B"
+    verify: "77"
+    replace: "7B"
+  - id: parity-0017
+    desc: "WARP 等价补丁 17（偏移 0x0063C8BC）"
+    desc_en: "WARP parity patch 17 @0x0063C8BC"
+    mode: offset
+    offset: "0x0063C8BC"
+    verify: "77"
+    replace: "7B"
+  - id: parity-0018
+    desc: "WARP 等价补丁 18（偏移 0x0063CC1C）"
+    desc_en: "WARP parity patch 18 @0x0063CC1C"
+    mode: offset
+    offset: "0x0063CC1C"
+    verify: "77"
+    replace: "7B"
+  - id: parity-0019
+    desc: "WARP 等价补丁 19（偏移 0x0063CFF0）"
+    desc_en: "WARP parity patch 19 @0x0063CFF0"
+    mode: offset
+    offset: "0x0063CFF0"
+    verify: "77"
+    replace: "7B"
+  - id: parity-0020
+    desc: "WARP 等价补丁 20（偏移 0x00659D53）"
+    desc_en: "WARP parity patch 20 @0x00659D53"
+    mode: offset
+    offset: "0x00659D53"
+    verify: "EB 1B"
+    replace: "90 90"
+  - id: parity-0021
+    desc: "WARP 等价补丁 21（偏移 0x00659E74）"
+    desc_en: "WARP parity patch 21 @0x00659E74"
+    mode: offset
+    offset: "0x00659E74"
+    verify: "55 9D"
+    replace: "71 9B"
+  - id: parity-0022
+    desc: "WARP 等价补丁 22（偏移 0x0065A0C4）"
+    desc_en: "WARP parity patch 22 @0x0065A0C4"
+    mode: offset
+    offset: "0x0065A0C4"
+    verify: "E9 87 07 00 00"
+    replace: "90 90 90 90 90"
+  - id: parity-0023
+    desc: "WARP 等价补丁 23（偏移 0x0065A0F0）"
+    desc_en: "WARP parity patch 23 @0x0065A0F0"
+    mode: offset
+    offset: "0x0065A0F0"
+    verify: "C9 A0"
+    replace: "DC 9E"
+  - id: parity-0024
+    desc: "WARP 等价补丁 24（偏移 0x0065AD49）"
+    desc_en: "WARP parity patch 24 @0x0065AD49"
+    mode: offset
+    offset: "0x0065AD49"
+    verify: "33 51 02 00"
+    replace: "53 29 99 01"
+  - id: parity-0025
+    desc: "WARP 等价补丁 25（偏移 0x0065AF74）"
+    desc_en: "WARP parity patch 25 @0x0065AF74"
+    mode: offset
+    offset: "0x0065AF74"
+    verify: "08 4F 02 00"
+    replace: "28 27 99 01"
+  - id: parity-0026
+    desc: "WARP 等价补丁 26（偏移 0x0065B248）"
+    desc_en: "WARP parity patch 26 @0x0065B248"
+    mode: offset
+    offset: "0x0065B248"
+    verify: "34 4C 02 00"
+    replace: "54 24 99 01"
+  - id: parity-0027
+    desc: "WARP 等价补丁 27（偏移 0x0065C53A）"
+    desc_en: "WARP parity patch 27 @0x0065C53A"
+    mode: offset
+    offset: "0x0065C53A"
+    verify: "74"
+    replace: "EB"
+  - id: parity-0028
+    desc: "WARP 等价补丁 28（偏移 0x00667317）"
+    desc_en: "WARP parity patch 28 @0x00667317"
+    mode: offset
+    offset: "0x00667317"
+    verify: "E4 D3 02 01"
+    replace: "0A D5 3E 02"
+  - id: parity-0029
+    desc: "WARP 等价补丁 29（偏移 0x00669B3C）"
+    desc_en: "WARP parity patch 29 @0x00669B3C"
+    mode: offset
+    offset: "0x00669B3C"
+    verify: "FC D4 02 01"
+    replace: "E2 D8 3E 02"
+  - id: parity-0030
+    desc: "WARP 等价补丁 30（偏移 0x006860FA）"
+    desc_en: "WARP parity patch 30 @0x006860FA"
+    mode: offset
+    offset: "0x006860FA"
+    verify: "75"
+    replace: "EB"
+  - id: parity-0031
+    desc: "WARP 等价补丁 31（偏移 0x007FBB4B）"
+    desc_en: "WARP parity patch 31 @0x007FBB4B"
+    mode: offset
+    offset: "0x007FBB4B"
+    verify: "DC 17 FA 00"
+    replace: "D0 D6 3E 02"
+  - id: parity-0032
+    desc: "WARP 等价补丁 32（偏移 0x007FC621）"
+    desc_en: "WARP parity patch 32 @0x007FC621"
+    mode: offset
+    offset: "0x007FC621"
+    verify: "68 7C E4 06"
+    replace: "E9 8A 10 7F"
+  - id: parity-0033
+    desc: "WARP 等价补丁 33（偏移 0x008533CD）"
+    desc_en: "WARP parity patch 33 @0x008533CD"
+    mode: offset
+    offset: "0x008533CD"
+    verify: "75"
+    replace: "EB"
+  - id: parity-0034
+    desc: "WARP 等价补丁 34（偏移 0x0085BC97）"
+    desc_en: "WARP parity patch 34 @0x0085BC97"
+    mode: offset
+    offset: "0x0085BC97"
+    verify: "74"
+    replace: "EB"
+  - id: parity-0035
+    desc: "WARP 等价补丁 35（偏移 0x00861472）"
+    desc_en: "WARP parity patch 35 @0x00861472"
+    mode: offset
+    offset: "0x00861472"
+    verify: "0C B5 FE 00"
+    replace: "04 D5 3E 02"
+  - id: parity-0036
+    desc: "WARP 等价补丁 36（偏移 0x0086EDEA）"
+    desc_en: "WARP parity patch 36 @0x0086EDEA"
+    mode: offset
+    offset: "0x0086EDEA"
+    verify: "83 F8 03 0F 84 E9 11 00 00 83 F8 08 0F 84 E0 11 00 00 83 F8 09 0F 84 D7 11 00 00"
+    replace: "EB 19 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90"
+  - id: parity-0037
+    desc: "WARP 等价补丁 37（偏移 0x00884CBC）"
+    desc_en: "WARP parity patch 37 @0x00884CBC"
+    mode: offset
+    offset: "0x00884CBC"
+    verify: "0F 8E"
+    replace: "90 E9"
+  - id: parity-0038
+    desc: "WARP 等价补丁 38（偏移 0x008C36AE）"
+    desc_en: "WARP parity patch 38 @0x008C36AE"
+    mode: offset
+    offset: "0x008C36AE"
+    verify: "75"
+    replace: "EB"
+  - id: parity-0039
+    desc: "WARP 等价补丁 39（偏移 0x0090BB14）"
+    desc_en: "WARP parity patch 39 @0x0090BB14"
+    mode: offset
+    offset: "0x0090BB14"
+    verify: "85 C9 0F 84 D2 00 00 00 83 F9 12 0F 84 C9 00 00 00 83 F9 0C 0F 84 C0 00 00 00"
+    replace: "EB 18 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90"
+  - id: parity-0040
+    desc: "WARP 等价补丁 40（偏移 0x0090BB42）"
+    desc_en: "WARP parity patch 40 @0x0090BB42"
+    mode: offset
+    offset: "0x0090BB42"
+    verify: "68 45 57 01"
+    replace: "43 D7 3E 02"
+  - id: parity-0041
+    desc: "WARP 等价补丁 41（偏移 0x0090BC1E）"
+    desc_en: "WARP parity patch 41 @0x0090BC1E"
+    mode: offset
+    offset: "0x0090BC1E"
+    verify: "68 45 57 01"
+    replace: "43 D7 3E 02"
+  - id: parity-0042
+    desc: "WARP 等价补丁 42（偏移 0x0090BD4A）"
+    desc_en: "WARP parity patch 42 @0x0090BD4A"
+    mode: offset
+    offset: "0x0090BD4A"
+    verify: "68 45 57 01"
+    replace: "43 D7 3E 02"
+  - id: parity-0043
+    desc: "WARP 等价补丁 43（偏移 0x0090D77E）"
+    desc_en: "WARP parity patch 43 @0x0090D77E"
+    mode: offset
+    offset: "0x0090D77E"
+    verify: "74"
+    replace: "EB"
+  - id: parity-0044
+    desc: "WARP 等价补丁 44（偏移 0x00910357）"
+    desc_en: "WARP parity patch 44 @0x00910357"
+    mode: offset
+    offset: "0x00910357"
+    verify: "68 45 57 01"
+    replace: "43 D7 3E 02"
+  - id: parity-0045
+    desc: "WARP 等价补丁 45（偏移 0x009105D5）"
+    desc_en: "WARP parity patch 45 @0x009105D5"
+    mode: offset
+    offset: "0x009105D5"
+    verify: "DC 17 FA 00"
+    replace: "D0 D6 3E 02"
+  - id: parity-0046
+    desc: "WARP 等价补丁 46（偏移 0x00911751）"
+    desc_en: "WARP parity patch 46 @0x00911751"
+    mode: offset
+    offset: "0x00911751"
+    verify: "DC 17 FA 00"
+    replace: "D0 D6 3E 02"
+  - id: parity-0047
+    desc: "WARP 等价补丁 47（偏移 0x00958854）"
+    desc_en: "WARP parity patch 47 @0x00958854"
+    mode: offset
+    offset: "0x00958854"
+    verify: "7C 0B"
+    replace: "90 90"
+  - id: parity-0048
+    desc: "WARP 等价补丁 48（偏移 0x0095B1DC）"
+    desc_en: "WARP parity patch 48 @0x0095B1DC"
+    mode: offset
+    offset: "0x0095B1DC"
+    verify: "A1 00 46 57 01"
+    replace: "E9 10 00 00 00"
+  - id: parity-0049
+    desc: "WARP 等价补丁 49（偏移 0x0099C0E7）"
+    desc_en: "WARP parity patch 49 @0x0099C0E7"
+    mode: offset
+    offset: "0x0099C0E7"
+    verify: "77"
+    replace: "7B"
+  - id: parity-0050
+    desc: "WARP 等价补丁 50（偏移 0x0099C355）"
+    desc_en: "WARP parity patch 50 @0x0099C355"
+    mode: offset
+    offset: "0x0099C355"
+    verify: "FF 15 7C 16 FA 00"
+    replace: "E8 CE 12 65 01 90"
+  - id: parity-0051
+    desc: "WARP 等价补丁 51（偏移 0x0099EF5B）"
+    desc_en: "WARP parity patch 51 @0x0099EF5B"
+    mode: offset
+    offset: "0x0099EF5B"
+    verify: "75"
+    replace: "EB"
+  - id: parity-0052
+    desc: "WARP 等价补丁 52（偏移 0x0099EFFA）"
+    desc_en: "WARP parity patch 52 @0x0099EFFA"
+    mode: offset
+    offset: "0x0099EFFA"
+    verify: "42 1C CD FF"
+    replace: "32 E5 64 01"
+  - id: parity-0053
+    desc: "WARP 等价补丁 53（偏移 0x0099F338）"
+    desc_en: "WARP parity patch 53 @0x0099F338"
+    mode: offset
+    offset: "0x0099F338"
+    verify: "75"
+    replace: "EB"
+  - id: parity-0054
+    desc: "WARP 等价补丁 54（偏移 0x009CFF2C）"
+    desc_en: "WARP parity patch 54 @0x009CFF2C"
+    mode: offset
+    offset: "0x009CFF2C"
+    verify: "DC 17 FA 00"
+    replace: "D0 D6 3E 02"
+  - id: parity-0055
+    desc: "WARP 等价补丁 55（偏移 0x00BB6ACF）"
+    desc_en: "WARP parity patch 55 @0x00BB6ACF"
+    mode: offset
+    offset: "0x00BB6ACF"
+    verify: "54"
+    replace: "00"
+  - id: parity-0056
+    desc: "WARP 等价补丁 56（偏移 0x00BC19A8）"
+    desc_en: "WARP parity patch 56 @0x00BC19A8"
+    mode: offset
+    offset: "0x00BC19A8"
+    verify: "58 58 58 58 58 58 58 2D 58 58 58 58 58 58 58 2D 58 58 58 58 58 58 58 2D 58 58 58 58 58 58 58 2D 58 58 58 58 58 58 58"
+    replace: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+  - id: parity-0057
+    desc: "WARP 等价补丁 57（偏移 0x00C0ACAA）"
+    desc_en: "WARP parity patch 57 @0x00C0ACAA"
+    mode: offset
+    offset: "0x00C0ACAA"
+    verify: "A1 BA"
+    replace: "20 28"
+  - id: parity-0058
+    desc: "WARP 等价补丁 58（偏移 0x00C0ACAE）"
+    desc_en: "WARP parity patch 58 @0x00C0ACAE"
+    mode: offset
+    offset: "0x00C0ACAE"
+    verify: "A1 BB"
+    replace: "29 20"
+  - id: parity-0059
+    desc: "WARP 等价补丁 59（偏移 0x00C2BE4B）"
+    desc_en: "WARP parity patch 59 @0x00C2BE4B"
+    mode: offset
+    offset: "0x00C2BE4B"
+    verify: "54"
+    replace: "00"
+  - id: parity-0060
+    desc: "WARP 等价补丁 60（偏移 0x00C2BE67）"
+    desc_en: "WARP parity patch 60 @0x00C2BE67"
+    mode: offset
+    offset: "0x00C2BE67"
+    verify: "54"
+    replace: "00"
+  - id: parity-0061
+    desc: "WARP 等价补丁 61（偏移 0x00C2BE87）"
+    desc_en: "WARP parity patch 61 @0x00C2BE87"
+    mode: offset
+    offset: "0x00C2BE87"
+    verify: "54"
+    replace: "00"
+  - id: parity-0062
+    desc: "WARP 等价补丁 62（偏移 0x00C70470）"
+    desc_en: "WARP parity patch 62 @0x00C70470"
+    mode: offset
+    offset: "0x00C70470"
+    verify: "31 31 3A 31 30 3A 32 37"
+    replace: "00 00 00 00 00 00 00 00"
+  - id: parity-0063
+    desc: "WARP 等价补丁 63（偏移 0x00C7047C）"
+    desc_en: "WARP parity patch 63 @0x00C7047C"
+    mode: offset
+    offset: "0x00C7047C"
+    verify: "4D 61 79 20 32 39 20 32 30 32 35"
+    replace: "00 00 00 00 00 00 00 00 00 00 00"
+  - id: parity-0064
+    desc: "WARP 等价补丁 64（偏移 0x00E280FE）"
+    desc_en: "WARP parity patch 64 @0x00E280FE"
+    mode: offset
+    offset: "0x00E280FE"
+    verify: "04"
+    replace: "01"
+  - id: parity-0065
+    desc: "WARP 等价补丁 65（偏移 0x00E28100）"
+    desc_en: "WARP parity patch 65 @0x00E28100"
+    mode: offset
+    offset: "0x00E28100"
+    verify: "72"
+    replace: "7B"
+  - id: parity-0066
+    desc: "WARP 等价补丁 66（偏移 0x00E28104）"
+    desc_en: "WARP parity patch 66 @0x00E28104"
+    mode: offset
+    offset: "0x00E28104"
+    verify: "E0 02"
+    replace: "10 03"
+  - id: parity-0067
+    desc: "WARP 等价补丁 67（偏移 0x00E4B73A）"
+    desc_en: "WARP parity patch 67 @0x00E4B73A"
+    mode: offset
+    offset: "0x00E4B73A"
+    verify: "80 80"
+    replace: "00 00"
+  - id: parity-0068
+    desc: "WARP 等价补丁 68（偏移 0x00E4B73E）"
+    desc_en: "WARP parity patch 68 @0x00E4B73E"
+    mode: offset
+    offset: "0x00E4B73E"
+    verify: "01"
+    replace: "00"
+  - id: parity-0069
+    desc: "WARP 等价补丁 69（偏移 0x00E4B740）"
+    desc_en: "WARP parity patch 69 @0x00E4B740"
+    mode: offset
+    offset: "0x00E4B740"
+    verify: "20"
+    replace: "00"
+  - id: parity-0070
+    desc: "WARP 等价补丁 70（偏移 0x00E58F06）"
+    desc_en: "WARP parity patch 70 @0x00E58F06"
+    mode: offset
+    offset: "0x00E58F06"
+    verify: "00 00"
+    replace: "28 42"
+  - id: parity-0071
+    desc: "WARP 等价补丁 71（偏移 0x00E58F0A）"
+    desc_en: "WARP parity patch 71 @0x00E58F0A"
+    mode: offset
+    offset: "0x00E58F0A"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "53 79 73 74 65 6D 45 4E 5C 69 74 65 6D 49 6E 66 6F 2E 6C 75 61"
+  - id: parity-0072
+    desc: "WARP 等价补丁 72（偏移 0x00E58F30）"
+    desc_en: "WARP parity patch 72 @0x00E58F30"
+    mode: offset
+    offset: "0x00E58F30"
+    verify: "00 00"
+    replace: "C8 80"
+  - id: parity-0073
+    desc: "WARP 等价补丁 73（偏移 0x00E58F34）"
+    desc_en: "WARP parity patch 73 @0x00E58F34"
+    mode: offset
+    offset: "0x00E58F34"
+    verify: "00 00 00 00 00 00 00 00 00 00 00"
+    replace: "60 68 98 DA 02 01 FF 15 68 12 FA"
+  - id: parity-0074
+    desc: "WARP 等价补丁 74（偏移 0x00E58F40）"
+    desc_en: "WARP parity patch 74 @0x00E58F40"
+    mode: offset
+    offset: "0x00E58F40"
+    verify: "00 00 00 00 00"
+    replace: "85 C0 0F 84 CB"
+  - id: parity-0075
+    desc: "WARP 等价补丁 75（偏移 0x00E58F48）"
+    desc_en: "WARP parity patch 75 @0x00E58F48"
+    mode: offset
+    offset: "0x00E58F48"
+    verify: "00 00 00 00 00"
+    replace: "8B 3D 90 13 FA"
+  - id: parity-0076
+    desc: "WARP 等价补丁 76（偏移 0x00E58F4E）"
+    desc_en: "WARP parity patch 76 @0x00E58F4E"
+    mode: offset
+    offset: "0x00E58F4E"
+    verify: "00 00"
+    replace: "E8 19"
+  - id: parity-0077
+    desc: "WARP 等价补丁 77（偏移 0x00E58F53）"
+    desc_en: "WARP parity patch 77 @0x00E58F53"
+    mode: offset
+    offset: "0x00E58F53"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "47 65 74 50 72 69 76 61 74 65 50 72 6F 66 69 6C 65 53 74 72 69 6E 67 41"
+  - id: parity-0078
+    desc: "WARP 等价补丁 78（偏移 0x00E58F6C）"
+    desc_en: "WARP parity patch 78 @0x00E58F6C"
+    mode: offset
+    offset: "0x00E58F6C"
+    verify: "00 00 00 00 00 00 00 00 00 00"
+    replace: "8B D8 50 FF D7 85 C0 0F 84 9A"
+  - id: parity-0079
+    desc: "WARP 等价补丁 79（偏移 0x00E58F79）"
+    desc_en: "WARP parity patch 79 @0x00E58F79"
+    mode: offset
+    offset: "0x00E58F79"
+    verify: "00 00 00 00 00"
+    replace: "89 45 F6 E8 1B"
+  - id: parity-0080
+    desc: "WARP 等价补丁 80（偏移 0x00E58F81）"
+    desc_en: "WARP parity patch 80 @0x00E58F81"
+    mode: offset
+    offset: "0x00E58F81"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "57 72 69 74 65 50 72 69 76 61 74 65 50 72 6F 66 69 6C 65 53 74 72 69 6E 67 41"
+  - id: parity-0081
+    desc: "WARP 等价补丁 81（偏移 0x00E58F9C）"
+    desc_en: "WARP parity patch 81 @0x00E58F9C"
+    mode: offset
+    offset: "0x00E58F9C"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "8B C3 50 FF D7 85 C0 74 6E 89 45 FA 33 D2 66 C7 45 FE 39"
+  - id: parity-0082
+    desc: "WARP 等价补丁 82（偏移 0x00E58FB0）"
+    desc_en: "WARP parity patch 82 @0x00E58FB0"
+    mode: offset
+    offset: "0x00E58FB0"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "52 68 1C D6 3E 02 6A 74 8D 5D 81 53 8D 45 FE 50 50 68 17 D6 3E 02 FF 55 F6 8D 4D FE 66 8B 09 8D 5D 81 66 3B 0B 5A 74 0E 52 53 B9 70 61 57 01 E8 5C 36 68 FE 5A 42 FE 4D FE 80 7D FE 30 73 C1 85 D2 75 20 68 1C D6 3E 02 68 20 CB 07 01 66 C7 45 FE 32"
+  - id: parity-0083
+    desc: "WARP 等价补丁 83（偏移 0x00E59003）"
+    desc_en: "WARP parity patch 83 @0x00E59003"
+    mode: offset
+    offset: "0x00E59003"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "8D 45 FE 50 68 17 D6 3E 02 FF 55 FA 85 C0 75 97 61 C9 C3"
+  - id: parity-0084
+    desc: "WARP 等价补丁 84（偏移 0x00E59017）"
+    desc_en: "WARP parity patch 84 @0x00E59017"
+    mode: offset
+    offset: "0x00E59017"
+    verify: "00 00 00 00"
+    replace: "44 61 74 61"
+  - id: parity-0085
+    desc: "WARP 等价补丁 85（偏移 0x00E5901C）"
+    desc_en: "WARP parity patch 85 @0x00E5901C"
+    mode: offset
+    offset: "0x00E5901C"
+    verify: "00 00 00 00 00 00 00 00 00 00"
+    replace: "2E 5C 44 41 54 41 2E 69 6E 69"
+  - id: parity-0086
+    desc: "WARP 等价补丁 86（偏移 0x00E59028）"
+    desc_en: "WARP parity patch 86 @0x00E59028"
+    mode: offset
+    offset: "0x00E59028"
+    verify: "00 00 00 00 00"
+    replace: "8B 44 24 10 0D"
+  - id: parity-0087
+    desc: "WARP 等价补丁 87（偏移 0x00E5902F）"
+    desc_en: "WARP parity patch 87 @0x00E5902F"
+    mode: offset
+    offset: "0x00E5902F"
+    verify: "00"
+    replace: "08"
+  - id: parity-0088
+    desc: "WARP 等价补丁 88（偏移 0x00E59031）"
+    desc_en: "WARP parity patch 88 @0x00E59031"
+    mode: offset
+    offset: "0x00E59031"
+    verify: "00 00 00 00 00 00 00 00 00"
+    replace: "89 44 24 10 FF 25 7C 16 FA"
+  - id: parity-0089
+    desc: "WARP 等价补丁 89（偏移 0x00E59050）"
+    desc_en: "WARP parity patch 89 @0x00E59050"
+    mode: offset
+    offset: "0x00E59050"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "60 8B 35 64 D8 1E 01 56 FF 15 FC 17 FA"
+  - id: parity-0090
+    desc: "WARP 等价补丁 90（偏移 0x00E5905E）"
+    desc_en: "WARP parity patch 90 @0x00E5905E"
+    mode: offset
+    offset: "0x00E5905E"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "85 C0 75 02 61 C3 8B 48 0C 8B 11 8B C2 0F B6 48 03 51 0F B6 48 02 51 0F B6 48 01 51 0F B6 08 51 68 40 26 07 01 68 3D D6 3E 02 FF 15 2C 16 FA"
+  - id: parity-0091
+    desc: "WARP 等价补丁 91（偏移 0x00E5908E）"
+    desc_en: "WARP parity patch 91 @0x00E5908E"
+    mode: offset
+    offset: "0x00E5908E"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "83 C4 18 C7 05 64 D8 1E 01 3D D6 3E 02 61 C3"
+  - id: parity-0092
+    desc: "WARP 等价补丁 92（偏移 0x00E590A0）"
+    desc_en: "WARP parity patch 92 @0x00E590A0"
+    mode: offset
+    offset: "0x00E590A0"
+    verify: "00 00 00 00 00 00 00 00 00 00"
+    replace: "E8 AB FF FF FF E9 D6 27 69 FE"
+  - id: parity-0093
+    desc: "WARP 等价补丁 93（偏移 0x00E590B0）"
+    desc_en: "WARP parity patch 93 @0x00E590B0"
+    mode: offset
+    offset: "0x00E590B0"
+    verify: "00 00 00 00 00 00 00 00 00"
+    replace: "68 7C E4 06 01 68 26 C6 BF"
+  - id: parity-0094
+    desc: "WARP 等价补丁 94（偏移 0x00E590BA）"
+    desc_en: "WARP parity patch 94 @0x00E590BA"
+    mode: offset
+    offset: "0x00E590BA"
+    verify: "00 00 00 00 00"
+    replace: "E9 91 FF FF FF"
+  - id: parity-0095
+    desc: "WARP 等价补丁 95（偏移 0x00E590D0）"
+    desc_en: "WARP parity patch 95 @0x00E590D0"
+    mode: offset
+    offset: "0x00E590D0"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "D4 D6 3E 02 55 8B EC 83 EC 0C C7 45 F8 01"
+  - id: parity-0096
+    desc: "WARP 等价补丁 96（偏移 0x00E590E1）"
+    desc_en: "WARP parity patch 96 @0x00E590E1"
+    mode: offset
+    offset: "0x00E590E1"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "8B 45 10 50 8B 4D 0C 51 8B 55 08 52 FF 15 DC 17 FA"
+  - id: parity-0097
+    desc: "WARP 等价补丁 97（偏移 0x00E590F3）"
+    desc_en: "WARP parity patch 97 @0x00E590F3"
+    mode: offset
+    offset: "0x00E590F3"
+    verify: "00 00 00 00 00 00 00 00 00 00 00"
+    replace: "89 45 FC 83 7D FC FF 74 3C E8 0B"
+  - id: parity-0098
+    desc: "WARP 等价补丁 98（偏移 0x00E59101）"
+    desc_en: "WARP parity patch 98 @0x00E59101"
+    mode: offset
+    offset: "0x00E59101"
+    verify: "00 00 00 00 00 00 00 00 00 00"
+    replace: "73 65 74 73 6F 63 6B 6F 70 74"
+  - id: parity-0099
+    desc: "WARP 等价补丁 99（偏移 0x00E5910C）"
+    desc_en: "WARP parity patch 99 @0x00E5910C"
+    mode: offset
+    offset: "0x00E5910C"
+    verify: "00 00 00 00 00 00 00 00 00 00"
+    replace: "68 7C E4 06 01 FF 15 68 12 FA"
+  - id: parity-0100
+    desc: "WARP 等价补丁 100（偏移 0x00E59117）"
+    desc_en: "WARP parity patch 100 @0x00E59117"
+    mode: offset
+    offset: "0x00E59117"
+    verify: "00 00 00 00 00 00"
+    replace: "50 FF 15 90 13 FA"
+  - id: parity-0101
+    desc: "WARP 等价补丁 101（偏移 0x00E5911E）"
+    desc_en: "WARP parity patch 101 @0x00E5911E"
+    mode: offset
+    offset: "0x00E5911E"
+    verify: "00 00 00 00 00 00"
+    replace: "89 45 F4 83 7D F4"
+  - id: parity-0102
+    desc: "WARP 等价补丁 102（偏移 0x00E59125）"
+    desc_en: "WARP parity patch 102 @0x00E59125"
+    mode: offset
+    offset: "0x00E59125"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "74 11 6A 04 8D 45 F8 50 6A 01 6A 06 8B 4D FC 51 FF 55 F4 8B 45 FC 8B E5 5D C2 0C"
+  - id: parity-0103
+    desc: "WARP 等价补丁 103（偏移 0x00E59146）"
+    desc_en: "WARP parity patch 103 @0x00E59146"
+    mode: offset
+    offset: "0x00E59146"
+    verify: "00"
+    replace: "80"
+  - id: parity-0104
+    desc: "WARP 等价补丁 104（偏移 0x00E59150）"
+    desc_en: "WARP parity patch 104 @0x00E59150"
+    mode: offset
+    offset: "0x00E59150"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "A2 25 B2 5D 01 60 9C B9 68 82 2F 01 85 C9 75 05 E9 8A"
+  - id: parity-0105
+    desc: "WARP 等价补丁 105（偏移 0x00E59165）"
+    desc_en: "WARP parity patch 105 @0x00E59165"
+    mode: offset
+    offset: "0x00E59165"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "6A 24 E8 94 28 64 FE 85 C0 75 05 E9 7A"
+  - id: parity-0106
+    desc: "WARP 等价补丁 106（偏移 0x00E59175）"
+    desc_en: "WARP parity patch 106 @0x00E59175"
+    mode: offset
+    offset: "0x00E59175"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "8B F0 A1 B0 89 2F 01 89 46 1C A1 B4 89 2F 01 89 46 20 A1 B8 89 2F 01 89 46 14 A1 BC 89 2F 01 89 46 18 FF 35 C0 89 2F 01 6A 24 B9 68 82 2F 01 E8 F7 6B 64 FE 8B 06 8B 90 94"
+  - id: parity-0107
+    desc: "WARP 等价补丁 107（偏移 0x00E591B1）"
+    desc_en: "WARP parity patch 107 @0x00E591B1"
+    mode: offset
+    offset: "0x00E591B1"
+    verify: "00 00 00"
+    replace: "8B CE 6A"
+  - id: parity-0108
+    desc: "WARP 等价补丁 108（偏移 0x00E591B5）"
+    desc_en: "WARP parity patch 108 @0x00E591B5"
+    mode: offset
+    offset: "0x00E591B5"
+    verify: "00"
+    replace: "6A"
+  - id: parity-0109
+    desc: "WARP 等价补丁 109（偏移 0x00E591B7）"
+    desc_en: "WARP parity patch 109 @0x00E591B7"
+    mode: offset
+    offset: "0x00E591B7"
+    verify: "00"
+    replace: "6A"
+  - id: parity-0110
+    desc: "WARP 等价补丁 110（偏移 0x00E591B9）"
+    desc_en: "WARP parity patch 110 @0x00E591B9"
+    mode: offset
+    offset: "0x00E591B9"
+    verify: "00 00 00 00 00 00 00 00"
+    replace: "68 B0 89 2F 01 6A 22 6A"
+  - id: parity-0111
+    desc: "WARP 等价补丁 111（偏移 0x00E591C2）"
+    desc_en: "WARP parity patch 111 @0x00E591C2"
+    mode: offset
+    offset: "0x00E591C2"
+    verify: "00 00 00 00 00 00 00"
+    replace: "FF D2 8B 06 8B 90 94"
+  - id: parity-0112
+    desc: "WARP 等价补丁 112（偏移 0x00E591CC）"
+    desc_en: "WARP parity patch 112 @0x00E591CC"
+    mode: offset
+    offset: "0x00E591CC"
+    verify: "00 00 00"
+    replace: "8B CE 6A"
+  - id: parity-0113
+    desc: "WARP 等价补丁 113（偏移 0x00E591D0）"
+    desc_en: "WARP parity patch 113 @0x00E591D0"
+    mode: offset
+    offset: "0x00E591D0"
+    verify: "00"
+    replace: "6A"
+  - id: parity-0114
+    desc: "WARP 等价补丁 114（偏移 0x00E591D2）"
+    desc_en: "WARP parity patch 114 @0x00E591D2"
+    mode: offset
+    offset: "0x00E591D2"
+    verify: "00"
+    replace: "6A"
+  - id: parity-0115
+    desc: "WARP 等价补丁 115（偏移 0x00E591D4）"
+    desc_en: "WARP parity patch 115 @0x00E591D4"
+    mode: offset
+    offset: "0x00E591D4"
+    verify: "00 00 00 00 00 00"
+    replace: "80 3D 25 B2 5D 01"
+  - id: parity-0116
+    desc: "WARP 等价补丁 116（偏移 0x00E591DB）"
+    desc_en: "WARP parity patch 116 @0x00E591DB"
+    mode: offset
+    offset: "0x00E591DB"
+    verify: "00 00 00 00 00"
+    replace: "74 07 68 4C 02"
+  - id: parity-0117
+    desc: "WARP 等价补丁 117（偏移 0x00E591E2）"
+    desc_en: "WARP parity patch 117 @0x00E591E2"
+    mode: offset
+    offset: "0x00E591E2"
+    verify: "00 00 00 00 00"
+    replace: "EB 05 68 4D 02"
+  - id: parity-0118
+    desc: "WARP 等价补丁 118（偏移 0x00E591E9）"
+    desc_en: "WARP parity patch 118 @0x00E591E9"
+    mode: offset
+    offset: "0x00E591E9"
+    verify: "00 00 00"
+    replace: "6A 06 6A"
+  - id: parity-0119
+    desc: "WARP 等价补丁 119（偏移 0x00E591ED）"
+    desc_en: "WARP parity patch 119 @0x00E591ED"
+    mode: offset
+    offset: "0x00E591ED"
+    verify: "00 00 00 00 00 00 00 00 00"
+    replace: "FF D2 9D 61 E9 A9 B1 1C FE"
+  - id: parity-0120
+    desc: "WARP 等价补丁 120（偏移 0x00E59200）"
+    desc_en: "WARP parity patch 120 @0x00E59200"
+    mode: offset
+    offset: "0x00E59200"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "3B 0D 1B D8 3E 02 0F 84 74 0A 62 FE 83 41 20 40 89 0D 1B D8 3E 02 E9 65 0A 62 FE"
+  - id: parity-0121
+    desc: "WARP 等价补丁 121（偏移 0x00E59221）"
+    desc_en: "WARP parity patch 121 @0x00E59221"
+    mode: offset
+    offset: "0x00E59221"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "53 79 73 74 65 6D 45 4E 5C 61 63 68 69 65 76 65 6D 65 6E 74 73 2E 6C 75 62"
+  - id: parity-0122
+    desc: "WARP 等价补丁 122（偏移 0x00E5923D）"
+    desc_en: "WARP parity patch 122 @0x00E5923D"
+    mode: offset
+    offset: "0x00E5923D"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "53 79 73 74 65 6D 45 4E 5C 6D 61 70 49 6E 66 6F 2E 6C 75 62"
+  - id: parity-0123
+    desc: "WARP 等价补丁 123（偏移 0x00E59290）"
+    desc_en: "WARP parity patch 123 @0x00E59290"
+    mode: offset
+    offset: "0x00E59290"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "53 79 73 74 65 6D 45 4E 5C 4F 6E 67 6F 69 6E 67 51 75 65 73 74 73"
+  - id: parity-0124
+    desc: "WARP 等价补丁 124（偏移 0x00E592A9）"
+    desc_en: "WARP parity patch 124 @0x00E592A9"
+    mode: offset
+    offset: "0x00E592A9"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "53 79 73 74 65 6D 45 4E 5C 52 65 63 6F 6D 6D 65 6E 64 65 64 51 75 65 73 74 73 5F 62 61 73 69 63"
+  - id: parity-0125
+    desc: "WARP 等价补丁 125（偏移 0x00E592CC）"
+    desc_en: "WARP parity patch 125 @0x00E592CC"
+    mode: offset
+    offset: "0x00E592CC"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "53 79 73 74 65 6D 45 4E 5C 74 69 70 62 6F 78 2E 6C 75 62"
+  - id: parity-0126
+    desc: "WARP 等价补丁 126（偏移 0x00E592E2）"
+    desc_en: "WARP parity patch 126 @0x00E592E2"
+    mode: offset
+    offset: "0x00E592E2"
+    verify: "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    replace: "53 79 73 74 65 6D 45 4E 5C 54 6F 77 6E 69 6E 66 6F 2E 6C 75 62"

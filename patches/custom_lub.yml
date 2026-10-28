@@ -34,7 +34,7 @@ patches:
     ask:
       key: achieve_lub_path
       label: "成就列表（AchievementsList.lub）的新路径"
-      default: "SystemCN\\AchievementsList.lub"
+      default: "SystemCN\\achievements.lub"
       kind: path
       min: 1
       max: 64
@@ -55,7 +55,7 @@ patches:
     ask:
       key: mapinfo_lub_path
       label: "地图信息表（MapInfo.lub）的新路径"
-      default: "SystemCN\\MapInfo.lub"
+      default: "SystemCN\\mapInfo.lub"
       kind: path
       min: 1
       max: 64
@@ -120,7 +120,7 @@ patches:
     ask:
       key: tipbox_lub_path
       label: "提示框表（Tipbox.lub）的新路径"
-      default: "SystemCN\\Tipbox.lub"
+      default: "SystemCN\\tipbox.lub"
       kind: path
       min: 1
       max: 64

@@ -9,25 +9,15 @@
 //! warp_rs langs  --dir patches/lang [--json]
 //! ```
 
-mod apply;
-mod encode;
-mod engine;
-mod hex;
-mod langs;
-mod params;
-mod patches;
-mod pe;
-mod table;
-
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-
-use apply::{ApplyOptions, VerifyOptions};
-use encode::Encoding;
-use params::ParamResolver;
-use table::PatchTable;
+use warp_rs::{apply, encode, engine, hex, langs, pe, table};
+use warp_rs::apply::{ApplyOptions, VerifyOptions};
+use warp_rs::encode::Encoding;
+use warp_rs::params::ParamResolver;
+use warp_rs::table::PatchTable;
 
 #[derive(Parser)]
 #[command(name = "warp_rs", about = "ExampleRO 客户端补丁引擎（WARP 核心的 Rust 实现）")]

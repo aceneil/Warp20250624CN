@@ -92,6 +92,8 @@ pub enum Mode {
     Jmp,
     /// 走 Rust 侧的自定义处理器（`handler:` 字段指定处理器名）。
     Custom,
+    /// 按固定文件偏移写（WARP 等价用途：代码洞、跳转点等无法用特征串唯一确定的落点）。
+    Offset,
 }
 
 impl Mode {
@@ -101,6 +103,7 @@ impl Mode {
             "nop" | "nops" => Ok(Mode::Nop),
             "jmp" | "jump" => Ok(Mode::Jmp),
             "custom" | "handler" | "hook" => Ok(Mode::Custom),
+            "offset" | "at" => Ok(Mode::Offset),
             other => bail!("未知补丁模式：{other}（支持 replace / nop / jmp）"),
         }
     }
@@ -111,6 +114,7 @@ impl Mode {
             Mode::Nop => "nop",
             Mode::Jmp => "jmp",
             Mode::Custom => "custom",
+            Mode::Offset => "offset",
         }
     }
 }
@@ -153,6 +157,12 @@ pub struct PatchSpec {
     /// 期望命中次数（不符即失败）。默认 1。
     #[serde(default)]
     pub expect: Option<usize>,
+    /// `mode: offset` 时的文件偏移（支持 0x 十六进制）。
+    #[serde(default)]
+    pub offset: Option<String>,
+    /// `mode: offset` 时用来校验的原字节（hex）。
+    #[serde(default)]
+    pub verify: Option<String>,
     /// 补丁模式，默认 `replace`。
     #[serde(default)]
     pub mode: Option<String>,

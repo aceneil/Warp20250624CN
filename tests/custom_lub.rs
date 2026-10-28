@@ -39,12 +39,12 @@ const PATCH_IDS: [&str; 6] = [
 const EXPECT: [(&str, &str, &[(usize, u32)]); 6] = [
     (
         "custom-achieve-lub",
-        "SystemCN\\AchievementsList.lub",
+        "SystemCN\\achievements.lub",
         &[(0x0021F934, 0x00FC784C)],
     ),
     (
         "custom-mapinfo-lub",
-        "SystemCN\\MapInfo.lub",
+        "SystemCN\\mapInfo.lub",
         &[(0x0028E24A, 0x00FEA02C)],
     ),
     (
@@ -59,7 +59,7 @@ const EXPECT: [(&str, &str, &[(usize, u32)]); 6] = [
     ),
     (
         "custom-tipbox-lub",
-        "SystemCN\\Tipbox.lub",
+        "SystemCN\\tipbox.lub",
         &[(0x003722F6, 0x00FF8B1C)],
     ),
     (
@@ -332,7 +332,7 @@ fn 按补丁_id_传参能覆盖默认值() {
     );
     // 别的几条没受影响
     let tip_imm = u32::from_le_bytes(out[0x003722F7..0x003722FB].try_into().unwrap());
-    assert_eq!(cstr_at(&out, tip_imm), b"SystemCN\\Tipbox.lub".to_vec());
+    assert_eq!(cstr_at(&out, tip_imm), b"SystemCN\\tipbox.lub".to_vec());
 
     // 报告里要标明是按补丁 id 传的
     let rep: Value = serde_json::from_slice(&std::fs::read(dir.join("r.json")).unwrap()).unwrap();

@@ -10,6 +10,7 @@
 
 use std::path::PathBuf;
 
+use anyhow::anyhow;
 use anyhow::{bail, ensure, Context, Result};
 use serde::Serialize;
 
@@ -220,6 +221,18 @@ struct Target {
     note: Option<String>,
 }
 
+
+/// 解析 `offset:` 字段（支持 0x 前缀、下划线分隔）。
+fn parse_offset(raw: &str) -> Result<usize> {
+    let t = raw.trim().replace('_', "");
+    let v = if let Some(hexpart) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+        usize::from_str_radix(hexpart, 16)
+    } else {
+        t.parse::<usize>()
+    };
+    v.map_err(|_| anyhow!("无法解析 offset：{raw}"))
+}
+
 /// 应用补丁表。
 pub fn apply(
     data: Vec<u8>,
@@ -350,6 +363,72 @@ pub fn apply(
         if let Some(handler) = patches::upgrade_handler(&r.spec.id) {
             plan.handler = Some(handler.to_string());
             plan.reason = Some(format!("自定义补丁 {handler}（Rust 侧升级实现）：在写入阶段执行"));
+            plans.push(plan);
+            continue;
+        }
+
+        // 固定偏移补丁：不做搜索，直接按 offset 落点
+        if r.mode == Mode::Offset {
+            let off = match r
+                .spec
+                .offset
+                .as_deref()
+                .ok_or_else(|| anyhow!("补丁 {} 是 offset 模式，但没有 offset", r.spec.id))
+                .and_then(parse_offset)
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    plan.status = Status::Fail;
+                    plan.reason = Some(format!("{e:#}"));
+                    plans.push(plan);
+                    continue;
+                }
+            };
+            let end = off + r.repl.len();
+            if end > engine.data.len() {
+                plan.status = Status::Fail;
+                plan.reason = Some(format!(
+                    "offset 0x{off:X} + {} 字节超出文件长度 {}",
+                    r.repl.len(),
+                    engine.data.len()
+                ));
+                plans.push(plan);
+                continue;
+            }
+            let cur = &engine.data[off..end];
+            // 幂等：已经是目标字节 → 视为已打
+            if cur == r.repl.as_slice() {
+                plan.status = Status::Already;
+                plan.hits = 1;
+                plan.already_at = Some(off);
+                plan.reason = Some("该偏移处已是目标字节（已打过补丁）".into());
+                plans.push(plan);
+                continue;
+            }
+            // 校验：给了 verify 就先比对原字节，不符说明客户端版本不对
+            if !r.find.is_empty() {
+                let ok = r.find.iter().enumerate().all(|(i, pb)| {
+                    off + i < engine.data.len() && (engine.data[off + i] & pb.mask) == pb.value
+                });
+                if !ok {
+                    plan.status = Status::Fail;
+                    plan.reason = Some(format!(
+                        "offset 0x{off:X} 处的原字节与 verify 不符（版本不匹配？）"
+                    ));
+                    plan.not_applicable = true;
+                    plans.push(plan);
+                    continue;
+                }
+            }
+            plan.hits = 1;
+            plan.targets.push(Target {
+                offset: off,
+                va: engine.va_of_offset(off),
+                old: cur.to_vec(),
+                new: r.repl.clone(),
+                note: Some("按固定偏移写入（WARP 等价补丁）".into()),
+            });
+            plan.status = Status::Applied;
             plans.push(plan);
             continue;
         }
@@ -535,7 +614,21 @@ pub fn apply(
             if opts.dry_run {
                 continue;
             }
-            if let Err(e) = engine.write_hex_offset(t.offset, &t.new) {
+            // offset 模式允许写 PE 头区域（WARP 的等价补丁会清几个头字段），
+            // 这些位置不在任何段里，走普通写入会被边界检查拒绝。
+            let offset_mode = matches!(table.patches[i].mode(), Ok(Mode::Offset));
+            let write_result = if offset_mode {
+                let end = t.offset + t.new.len();
+                if end <= engine.data.len() {
+                    engine.data[t.offset..end].copy_from_slice(&t.new);
+                    Ok(())
+                } else {
+                    Err(anyhow!("写入越界：0x{:X} + {} 字节", t.offset, t.new.len()))
+                }
+            } else {
+                engine.write_hex_offset(t.offset, &t.new)
+            };
+            if let Err(e) = write_result {
                 write_err = Some(format!("{e:#}"));
                 break;
             }
@@ -908,6 +1001,13 @@ fn resolve_patch(
     // ---- find：hex，或者带 {{参数}} 的模板
     let find = if mode == Mode::Custom {
         Vec::new()
+    } else if mode == Mode::Offset {
+        // offset 模式：find 用 verify（可选，用于校验原字节）
+        match &spec.verify {
+            Some(v) if !v.trim().is_empty() => hex::parse_pattern(v)
+                .with_context(|| format!("verify 模式解析失败：{v}"))?,
+            _ => Vec::new(),
+        }
     } else if params::has_placeholder(&spec.find) {
         let bytes = params::render_hex(&spec.find, values, encoding, &who)?;
         bytes
@@ -974,6 +1074,16 @@ fn resolve_patch(
                     bail!("补丁 {} 既没有 replace 也没有 text", spec.id);
                 }
             }
+        }
+        Mode::Offset => {
+            let h = spec
+                .replace
+                .clone()
+                .ok_or_else(|| anyhow!("补丁 {} 是 offset 模式，但没有 replace", spec.id))?;
+            let pat = hex::parse_replace(&h)
+                .with_context(|| format!("replace 字节串解析失败：{h}"))?;
+            repl = pat.iter().map(|o| o.unwrap_or(0)).collect();
+            terminate = false;
         }
         Mode::Nop => {
             let len = spec.nop_len.unwrap_or(find.len());
@@ -1100,6 +1210,7 @@ fn nul_padding(engine: &Engine, from: usize) -> usize {
 fn compute_target(engine: &Engine, r: &Resolved, off: usize) -> Result<Target> {
     let va = engine.va_of_offset(off);
     let new = match r.mode {
+        Mode::Offset => r.repl.clone(),
         Mode::Replace => {
             let mut buf = if r.repl_pat.is_empty() {
                 r.repl.clone()

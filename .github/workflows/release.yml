@@ -69,13 +69,14 @@ jobs:
       - name: build (Tauri GUI)
         run: cargo build --release --features gui --manifest-path tools/warp_gui/Cargo.toml
       - name: package
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          mkdir -p dist
-          cp tools/warp_gui/target/release/warp-gui.exe dist/
-          cd dist && zip -q warp-gui-windows-x86_64.zip warp-gui.exe
-          sha256sum warp-gui-windows-x86_64.zip > SHA256SUMS-windows.txt
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item tools/warp_gui/target/release/warp-gui.exe dist/
+          Compress-Archive -Path dist/warp-gui.exe -DestinationPath dist/warp-gui-windows-x86_64.zip -Force
+          $hash = (Get-FileHash dist/warp-gui-windows-x86_64.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  warp-gui-windows-x86_64.zip" | Set-Content -Encoding ascii dist/SHA256SUMS-windows.txt
+          Get-ChildItem dist
       - uses: actions/upload-artifact@v4
         with:
           name: gui-windows

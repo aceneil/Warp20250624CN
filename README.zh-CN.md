@@ -25,10 +25,26 @@ WARP（Neo-Mind/WARP，GPL-3.0）是一个 Qt 界面 + 一批 `.qjs` 脚本，�
 
 ## 安装
 
-每个 tag 都会在 Release 里挂预编译产物（Linux x86-64、Windows x86-64）。
+### 桌面程序（推荐）
+
+每个 tag 的 Release 只挂 **图形界面** 产物（Tauri v2，一套代码两端共用）：
+
+| 平台 | 文件 | 运行依赖 |
+|---|---|---|
+| Linux x86-64 | `warp-gui-linux-x86_64.tar.gz` | `webkit2gtk-4.1` |
+| Windows x86-64 | `warp-gui-windows-x86_64.zip` | WebView2（Win10/11 自带） |
+
+选客户端 exe → 勾选补丁 → 预览 → 应用。应用前自动备份为 `<原名>.bak`，写完自动校验。
+补丁表来自程序旁边的 `patches/*.yml`，不依赖任何远端 profile。
 
 ```bash
-# 或者从源码构建
+# 自己构建 GUI
+cargo build --release --features gui --manifest-path tools/warp_gui/Cargo.toml
+```
+
+### 命令行
+
+```bash
 cargo build --release            # → target/release/warp_rs
 ```
 

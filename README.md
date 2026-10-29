@@ -27,10 +27,28 @@ be embedded in a launcher, driven from a CLI, and cross-compiled without Qt.
 
 ## Install
 
-Prebuilt binaries are attached to every tagged release (Linux x86-64, Windows x86-64).
+### Desktop app (recommended)
+
+Every tagged release ships the **GUI** only — a Tauri v2 front-end, one codebase for
+both platforms:
+
+| platform | asset | runtime requirement |
+|---|---|---|
+| Linux x86-64 | `warp-gui-linux-x86_64.tar.gz` | `webkit2gtk-4.1` |
+| Windows x86-64 | `warp-gui-windows-x86_64.zip` | WebView2 (built into Win10/11) |
+
+Pick a client executable, tick the patches you want, preview, then apply. The app backs up
+the original as `<name>.bak` and verifies the result. Patch tables come from `patches/*.yml`
+next to the app — no remote profile is needed.
 
 ```bash
-# or build from source
+# build the GUI yourself
+cargo build --release --features gui --manifest-path tools/warp_gui/Cargo.toml
+```
+
+### Command line
+
+```bash
 cargo build --release            # → target/release/warp_rs
 ```
 

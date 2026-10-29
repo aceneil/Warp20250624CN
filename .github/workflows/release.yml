@@ -51,7 +51,8 @@ jobs:
           cp tools/warp_gui/target/release/warp-gui dist/
           strip dist/warp-gui || true
           tar -czf dist/warp-gui-linux-x86_64.tar.gz -C dist warp-gui
-          sha256sum dist/warp-gui-linux-x86_64.tar.gz > dist/SHA256SUMS-linux.txt
+          # 校验文件里只写文件名（不带 dist/ 前缀），用户下载后可直接 sha256sum -c
+          ( cd dist && sha256sum warp-gui-linux-x86_64.tar.gz > SHA256SUMS-linux.txt )
       - uses: actions/upload-artifact@v4
         with:
           name: gui-linux
